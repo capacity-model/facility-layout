@@ -228,7 +228,7 @@
       }
 
       #grid {
-        min-width: 1420px;
+        min-width: 1180px;
       }
 
       thead th {
@@ -1140,7 +1140,6 @@
               <th colspan="3" class="rule-left">Proximity relationship</th>
               <th colspan="2" class="rule-left">Measure</th>
               <th class="rule-left">Importance</th>
-              <th colspan="3" class="rule-left">Design evaluation</th>
               <th class="rule-left">Drawn as</th>
               <th class="spacer"></th>
             </tr>
@@ -1154,9 +1153,6 @@
               <th class="rule-left">Between</th>
               <th>Distance metric</th>
               <th class="rule-left">weight</th>
-              <th class="rule-left" style="text-align: right">Distance</th>
-              <th style="text-align: right">Satisfaction</th>
-              <th style="text-align: right">Contribution</th>
               <th class="rule-left">colour · width</th>
               <th></th>
             </tr>
@@ -1166,14 +1162,6 @@
             <tr>
               <td colspan="8">Maximum possible value</td>
               <td class="total rule-left" id="max-value">0</td>
-              <td colspan="2">Design value</td>
-              <td class="total" id="design-value">0</td>
-              <td colspan="2"></td>
-            </tr>
-            <tr class="score">
-              <td colspan="9"></td>
-              <td colspan="2">Design score</td>
-              <td class="total" id="design-score">0%</td>
               <td colspan="2"></td>
             </tr>
           </tfoot>
@@ -2102,17 +2090,6 @@
 
         tr.appendChild(weightCell);
 
-        var distCell = el("td", { class: "evalnum rule-left" });
-        var satCell = el("td", { class: "evalnum" });
-        var contribCell = el("td", { class: "evalnum" });
-        distCell.dataset.base = "evalnum rule-left";
-        satCell.dataset.base = "evalnum";
-        contribCell.dataset.base = "evalnum";
-        row.cells = { dist: distCell, sat: satCell, contrib: contribCell };
-        tr.appendChild(distCell);
-        tr.appendChild(satCell);
-        tr.appendChild(contribCell);
-
         tr.appendChild(previewCell);
 
         var del = el("button", {
@@ -2273,12 +2250,9 @@
          evaluation table laid out like the course slide. The two cells are paired
          when the tables are built, so writing one writes both. */
       function setCell(cell, text, kind) {
-        var targets = cell.twin ? [cell, cell.twin] : [cell];
-        targets.forEach(function (node) {
-          node.textContent = text;
-          node.className =
-            (node.dataset.base || "evalnum") + (kind ? " " + kind : "");
-        });
+        cell.textContent = text;
+        cell.className =
+          (cell.dataset.base || "evalnum") + (kind ? " " + kind : "");
       }
 
       function evaluate() {
@@ -2380,12 +2354,13 @@
             text: imp.weight === null ? "\u2014" : String(imp.weight),
           }),
         );
+        row.cells = {};
         ["dist", "sat", "contrib"].forEach(function (key, index) {
           var cell = el("td", {
             class: index === 0 ? "evalnum rule-left" : "evalnum",
           });
           cell.dataset.base = index === 0 ? "evalnum rule-left" : "evalnum";
-          if (row.cells && row.cells[key]) row.cells[key].twin = cell;
+          row.cells[key] = cell;
           tr.appendChild(cell);
         });
         return tr;
