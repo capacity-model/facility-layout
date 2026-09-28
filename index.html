@@ -228,7 +228,7 @@
       }
 
       #grid {
-        min-width: 1180px;
+        min-width: 1420px;
       }
 
       thead th {
@@ -289,9 +289,40 @@
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-size: 14px;
         font-weight: 500;
+        text-align: left;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      td.evalnum {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 13px;
         text-align: right;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+        color: var(--ink);
+      }
+
+      td.evalnum.feasible {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--accent);
+      }
+
+      td.evalnum.blocked {
+        font-size: 11px;
+        font-style: italic;
+        color: var(--warn);
+      }
+
+      td.evalnum.zero {
+        color: var(--muted);
+      }
+
+      tfoot tr.score td {
+        border-top: none;
+        padding-top: 0;
       }
 
       td.weight .constraint {
@@ -711,11 +742,56 @@
         flex: none;
       }
 
+      .scaletable th,
+      .scaletable td,
+      .scaletable input.num,
+      .scaletable td.used {
+        text-align: left;
+      }
+
       td.station-cell {
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-size: 12px;
         color: var(--ink-2);
         white-space: nowrap;
+      }
+
+      /* ---------- layout evaluation ---------- */
+
+      .eval {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .eval-note {
+        font-size: 12px;
+        color: var(--warn);
+      }
+
+      .evaltable {
+        min-width: 1000px;
+      }
+
+      .evaltable tbody td {
+        padding: 6px 10px;
+        white-space: nowrap;
+      }
+
+      .evaltable td.pairid {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-weight: 600;
+      }
+
+      .evaltable td.num {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        text-align: left;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stat.key dd#ev-score {
+        font-size: 28px;
+        font-weight: 600;
       }
 
       /* ---------- satisfaction curves ---------- */
@@ -1064,6 +1140,7 @@
               <th colspan="3" class="rule-left">Proximity relationship</th>
               <th colspan="2" class="rule-left">Measure</th>
               <th class="rule-left">Importance</th>
+              <th colspan="3" class="rule-left">Design evaluation</th>
               <th class="rule-left">Drawn as</th>
               <th class="spacer"></th>
             </tr>
@@ -1076,7 +1153,10 @@
               <th>Reason</th>
               <th class="rule-left">Between</th>
               <th>Distance metric</th>
-              <th class="rule-left" style="text-align: right">weight</th>
+              <th class="rule-left">weight</th>
+              <th class="rule-left" style="text-align: right">Distance</th>
+              <th style="text-align: right">Satisfaction</th>
+              <th style="text-align: right">Contribution</th>
               <th class="rule-left">colour · width</th>
               <th></th>
             </tr>
@@ -1086,6 +1166,14 @@
             <tr>
               <td colspan="8">Maximum possible value</td>
               <td class="total rule-left" id="max-value">0</td>
+              <td colspan="2">Design value</td>
+              <td class="total" id="design-value">0</td>
+              <td colspan="2"></td>
+            </tr>
+            <tr class="score">
+              <td colspan="9"></td>
+              <td colspan="2">Design score</td>
+              <td class="total" id="design-score">0%</td>
               <td colspan="2"></td>
             </tr>
           </tfoot>
@@ -1180,6 +1268,73 @@
         </div>
       </section>
 
+      <section class="panel eval">
+        <div class="scale-head">
+          <h2>Layout evaluation</h2>
+          <span class="eval-note" id="eval-note"></span>
+        </div>
+
+        <dl class="stats">
+          <div class="stat">
+            <dt>Maximum possible value</dt>
+            <dd id="ev-max">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Design value</dt>
+            <dd id="ev-value">0</dd>
+          </div>
+          <div class="stat key">
+            <dt>Design score</dt>
+            <dd id="ev-score">0%</dd>
+          </div>
+          <div class="stat">
+            <dt>Constraints met</dt>
+            <dd id="ev-constraints">0 / 0</dd>
+          </div>
+        </dl>
+
+        <div class="scalewrap">
+          <table class="evaltable">
+            <thead>
+              <tr class="group">
+                <th colspan="2">Pair of centers</th>
+                <th colspan="3" class="rule-left">Proximity relationship</th>
+                <th colspan="2" class="rule-left">Measure</th>
+                <th class="rule-left">Importance</th>
+                <th colspan="3" class="rule-left">Design evaluation</th>
+              </tr>
+              <tr>
+                <th>Center 1</th>
+                <th>Center 2</th>
+                <th class="rule-left">Importance</th>
+                <th>Desired proximity</th>
+                <th>Reason</th>
+                <th class="rule-left">Between</th>
+                <th>Distance metric</th>
+                <th class="rule-left">weight</th>
+                <th class="rule-left" style="text-align: right">Distance</th>
+                <th style="text-align: right">Satisfaction</th>
+                <th style="text-align: right">Contribution</th>
+              </tr>
+            </thead>
+            <tbody id="eval-rows"></tbody>
+            <tfoot>
+              <tr>
+                <td colspan="7">Maximum possible value</td>
+                <td class="total rule-left" id="ev-max-cell">0</td>
+                <td colspan="2">Design value</td>
+                <td class="total" id="ev-value-cell">0</td>
+              </tr>
+              <tr class="score">
+                <td colspan="8"></td>
+                <td colspan="2">Design score</td>
+                <td class="total" id="ev-score-cell">0%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
       <section class="panel curves">
         <div class="scale-head">
           <h2>Satisfaction curves</h2>
@@ -1245,11 +1400,11 @@
             <thead>
               <tr>
                 <th>Level</th>
-                <th style="text-align: right">weight</th>
-                <th style="text-align: right">line width</th>
+                <th>weight</th>
+                <th>line width</th>
                 <th>Not scored</th>
                 <th>Drawn as</th>
-                <th style="text-align: right">Used by</th>
+                <th>Used by</th>
                 <th></th>
               </tr>
             </thead>
@@ -1950,6 +2105,18 @@
         );
 
         tr.appendChild(weightCell);
+
+        var distCell = el("td", { class: "evalnum rule-left" });
+        var satCell = el("td", { class: "evalnum" });
+        var contribCell = el("td", { class: "evalnum" });
+        distCell.dataset.base = "evalnum rule-left";
+        satCell.dataset.base = "evalnum";
+        contribCell.dataset.base = "evalnum";
+        row.cells = { dist: distCell, sat: satCell, contrib: contribCell };
+        tr.appendChild(distCell);
+        tr.appendChild(satCell);
+        tr.appendChild(contribCell);
+
         tr.appendChild(previewCell);
 
         var del = el("button", {
@@ -2092,16 +2259,151 @@
         }
 
         refreshUsage();
+        evaluate();
         buildLayout();
         if (document.getElementById("geo-rows").children.length) renderGeoTable();
         save();
       }
 
+      /* ------------------------------------------------------------------
+         Design evaluation
+
+         Every relationship earns weight x satisfaction. A constraint level earns
+         no points: it reports whether the layout meets it at all. The totals are
+         the course's design value and design score.
+         ------------------------------------------------------------------ */
+
+      /* Each result lands in two places: the editable grid and the read-only
+         evaluation table laid out like the course slide. The two cells are paired
+         when the tables are built, so writing one writes both. */
+      function setCell(cell, text, kind) {
+        var targets = cell.twin ? [cell, cell.twin] : [cell];
+        targets.forEach(function (node) {
+          node.textContent = text;
+          node.className =
+            (node.dataset.base || "evalnum") + (kind ? " " + kind : "");
+        });
+      }
+
+      function evaluate() {
+        var grid = buildGrid();
+        var value = 0;
+        var max = 0;
+        var unmeasured = 0;
+        var infeasible = 0;
+        var constraintsTotal = 0;
+        var constraintsMet = 0;
+
+        state.rows.forEach(function (row) {
+          if (!row.cells) return;
+          var imp = importanceOf(row.importance);
+          var constraint = imp.weight === null;
+          if (!constraint) max += imp.weight;
+
+          var distance = distanceFor(row, grid);
+          if (distance === null || !isFinite(distance)) {
+            unmeasured += 1;
+            setCell(row.cells.dist, "—", "blocked");
+            setCell(row.cells.sat, "—", "blocked");
+            setCell(row.cells.contrib, "not measurable", "blocked");
+            return;
+          }
+
+          var rounded = Math.round(distance * 10) / 10;
+          setCell(
+            row.cells.dist,
+            rounded.toFixed(1),
+            rounded === 0 ? "zero" : null,
+          );
+
+          var sat = satisfaction(row.proximity, distance);
+          setCell(row.cells.sat, sat.toFixed(2), sat === 0 ? "zero" : null);
+
+          if (constraint) {
+            /* The course marks a Vital relationship Feasible rather than scoring
+               it. Feasible here means the layout fully meets it. */
+            var ok = sat >= 0.999;
+            constraintsTotal += 1;
+            if (ok) constraintsMet += 1;
+            else infeasible += 1;
+            setCell(
+              row.cells.contrib,
+              ok ? "Feasible" : "Infeasible",
+              ok ? "feasible" : "blocked",
+            );
+            return;
+          }
+
+          var contribution = imp.weight * sat;
+          value += contribution;
+          setCell(
+            row.cells.contrib,
+            (Math.round(contribution * 10) / 10).toFixed(1),
+            contribution === 0 ? "zero" : null,
+          );
+        });
+
+        var valueText = (Math.round(value * 10) / 10).toFixed(1);
+        var scoreText = max > 0 ? ((value / max) * 100).toFixed(1) + "%" : "\u2014";
+        var maxText = String(Math.round(max * 10) / 10);
+
+        [
+          ["design-value", valueText],
+          ["design-score", scoreText],
+          ["ev-value", valueText],
+          ["ev-score", scoreText],
+          ["ev-max", maxText],
+          ["ev-value-cell", valueText],
+          ["ev-score-cell", scoreText],
+          ["ev-max-cell", maxText],
+          ["ev-constraints", constraintsMet + " / " + constraintsTotal],
+        ].forEach(function (entry) {
+          var node = document.getElementById(entry[0]);
+          if (node) node.textContent = entry[1];
+        });
+
+        var note = [];
+        if (infeasible) note.push(infeasible + " constraint(s) unmet");
+        if (unmeasured) note.push(unmeasured + " not measurable");
+        var target = document.getElementById("eval-note");
+        if (target) target.textContent = note.join(" · ");
+      }
+
+      function summaryRow(row) {
+        var imp = importanceOf(row.importance);
+        var tr = el("tr");
+        tr.appendChild(el("td", { class: "pairid", text: row.c1 }));
+        tr.appendChild(el("td", { class: "pairid", text: row.c2 }));
+        tr.appendChild(el("td", { class: "rule-left", text: row.importance }));
+        tr.appendChild(el("td", { text: row.proximity }));
+        tr.appendChild(el("td", { text: reasonLabel(row.reasons) }));
+        tr.appendChild(el("td", { class: "rule-left", text: row.between }));
+        tr.appendChild(el("td", { text: row.metric }));
+        tr.appendChild(
+          el("td", {
+            class: "num rule-left",
+            text: imp.weight === null ? "\u2014" : String(imp.weight),
+          }),
+        );
+        ["dist", "sat", "contrib"].forEach(function (key, index) {
+          var cell = el("td", {
+            class: index === 0 ? "evalnum rule-left" : "evalnum",
+          });
+          cell.dataset.base = index === 0 ? "evalnum rule-left" : "evalnum";
+          if (row.cells && row.cells[key]) row.cells[key].twin = cell;
+          tr.appendChild(cell);
+        });
+        return tr;
+      }
+
       function render() {
         var tbody = document.getElementById("rows");
+        var summary = document.getElementById("eval-rows");
         while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+        while (summary.firstChild) summary.removeChild(summary.firstChild);
         state.rows.forEach(function (row, i) {
           tbody.appendChild(renderRow(row, i));
+          summary.appendChild(summaryRow(row));
         });
         commit();
       }
@@ -2500,6 +2802,169 @@
         };
       }
 
+      /* ------------------------------------------------------------------
+         Distance
+
+         Centroid and boundary measures come straight from the rectangles.
+         Aisle distance is travel through the space the blocks leave free: the
+         building is covered with a half-metre grid, cells inside a center are
+         removed, and a breadth-first search over the remaining cells gives the
+         shortest four-directional path — which is what walking a corridor is.
+         Nothing has to be drawn, and the corridors change as blocks move.
+         ------------------------------------------------------------------ */
+
+      var CELL = 0.5;
+
+      function buildGrid() {
+        var B = state.building;
+        var W = Math.max(1, Math.ceil(B.w / CELL));
+        var H = Math.max(1, Math.ceil(B.h / CELL));
+        var blocked = new Uint8Array(W * H);
+        state.centers.forEach(function (c) {
+          var x0 = Math.max(0, Math.floor(c.x / CELL));
+          var x1 = Math.min(W, Math.ceil((c.x + c.w) / CELL));
+          var y0 = Math.max(0, Math.floor(c.y / CELL));
+          var y1 = Math.min(H, Math.ceil((c.y + c.h) / CELL));
+          for (var y = y0; y < y1; y++) {
+            for (var x = x0; x < x1; x++) blocked[y * W + x] = 1;
+          }
+        });
+        return { W: W, H: H, blocked: blocked, cache: {} };
+      }
+
+      /* A station sits on a wall, so its own cell belongs to the block. Step just
+         outside along the wall's normal, then search outwards for a free cell. */
+      function freeCell(grid, x, y) {
+        var cx = Math.floor(x / CELL);
+        var cy = Math.floor(y / CELL);
+        /* A centroid sits deep inside its block, so the search has to be able to
+           reach the far wall of the largest center, not just a cell or two. */
+        var reach = Math.max(grid.W, grid.H);
+        for (var r = 0; r <= reach; r++) {
+          for (var dy = -r; dy <= r; dy++) {
+            for (var dx = -r; dx <= r; dx++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+              var nx = cx + dx,
+                ny = cy + dy;
+              if (nx < 0 || ny < 0 || nx >= grid.W || ny >= grid.H) continue;
+              if (!grid.blocked[ny * grid.W + nx]) return ny * grid.W + nx;
+            }
+          }
+        }
+        return -1;
+      }
+
+      function bfs(grid, start) {
+        var n = grid.W * grid.H;
+        var dist = new Int32Array(n).fill(-1);
+        var queue = new Int32Array(n);
+        var head = 0,
+          tail = 0;
+        dist[start] = 0;
+        queue[tail++] = start;
+        while (head < tail) {
+          var at = queue[head++];
+          var x = at % grid.W,
+            y = (at / grid.W) | 0;
+          var d = dist[at] + 1;
+          if (x > 0 && dist[at - 1] < 0 && !grid.blocked[at - 1]) {
+            dist[at - 1] = d;
+            queue[tail++] = at - 1;
+          }
+          if (x < grid.W - 1 && dist[at + 1] < 0 && !grid.blocked[at + 1]) {
+            dist[at + 1] = d;
+            queue[tail++] = at + 1;
+          }
+          if (y > 0 && dist[at - grid.W] < 0 && !grid.blocked[at - grid.W]) {
+            dist[at - grid.W] = d;
+            queue[tail++] = at - grid.W;
+          }
+          if (
+            y < grid.H - 1 &&
+            dist[at + grid.W] < 0 &&
+            !grid.blocked[at + grid.W]
+          ) {
+            dist[at + grid.W] = d;
+            queue[tail++] = at + grid.W;
+          }
+        }
+        return dist;
+      }
+
+      /* Distance from a point to the centre of the free cell it enters the aisle
+         network through — the leg travelled inside the center itself. Without it
+         a centroid would teleport to the corridor and the aisle distance could
+         come out shorter than the rectilinear one. */
+      function approachLeg(grid, point, cellIndex) {
+        var cx = ((cellIndex % grid.W) + 0.5) * CELL;
+        var cy = (Math.floor(cellIndex / grid.W) + 0.5) * CELL;
+        return Math.abs(point.x - cx) + Math.abs(point.y - cy);
+      }
+
+      function aisleDistance(grid, from, to) {
+        var a = freeCell(grid, from.x, from.y);
+        var b = freeCell(grid, to.x, to.y);
+        if (a < 0 || b < 0) return null;
+        if (!grid.cache[a]) grid.cache[a] = bfs(grid, a);
+        var steps = grid.cache[a][b];
+        if (steps < 0) return null;
+        return steps * CELL + approachLeg(grid, from, a) + approachLeg(grid, to, b);
+      }
+
+      function metricBetween(from, to, metric, grid) {
+        if (metric === "Euclidean") return Math.hypot(to.x - from.x, to.y - from.y);
+        if (metric === "Rectilinear")
+          return Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
+        return aisleDistance(grid, from, to);
+      }
+
+      /* Returns the measured distance, or null when it cannot be measured —
+         a missing station, or a center walled off from the other. */
+      function distanceFor(row, grid) {
+        if (row.c1 === "OUT" || row.c2 === "OUT") {
+          var inner = centerById(row.c1 === "OUT" ? row.c2 : row.c1);
+          if (!inner) return null;
+          var B = state.building;
+          return Math.max(
+            0,
+            Math.min(
+              inner.x,
+              inner.y,
+              B.w - (inner.x + inner.w),
+              B.h - (inner.y + inner.h),
+            ),
+          );
+        }
+
+        var a = centerById(row.c1);
+        var b = centerById(row.c2);
+        if (!a || !b) return null;
+
+        if (row.between === "Centroid") {
+          return metricBetween(centroidOf(a), centroidOf(b), row.metric, grid);
+        }
+
+        if (row.between === "Boundaries") {
+          var gapX = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0);
+          var gapY = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0);
+          if (row.metric === "Rectilinear") return gapX + gapY;
+          if (row.metric === "Euclidean") return Math.hypot(gapX, gapY);
+          var link = boundaryLink(a, b);
+          if (link.bar) return 0;
+          return aisleDistance(grid, link.p, link.q);
+        }
+
+        if (!a.O || !b.I) return null;
+        var so = stationAt(a, a.O);
+        var si = stationAt(b, b.I);
+        return metricBetween(
+          { x: so.x + so.nx * CELL, y: so.y + so.ny * CELL },
+          { x: si.x + si.nx * CELL, y: si.y + si.ny * CELL },
+          row.metric,
+          grid,
+        );
+      }
+
       function drawRelationships(svg) {
         var layer = svgEl("g", { "pointer-events": "none" });
 
@@ -2754,6 +3219,7 @@
             handle.setAttribute("x", c.x + c.w - 1.3);
             handle.setAttribute("y", c.y + c.h - 1.3);
             refreshLines();
+            evaluate();
             flagOverlaps();
           });
 
@@ -2783,6 +3249,7 @@
             handle.setAttribute("y", c.y + c.h - 1.3);
             placeStations();
             refreshLines();
+            evaluate();
             flagOverlaps();
           });
 
@@ -2828,6 +3295,7 @@
               c[role].t = placed.t;
               placeStations();
               refreshLines();
+              evaluate();
             });
           });
 
@@ -2905,6 +3373,7 @@
               if (isNaN(value)) return;
               c[key] = value;
               buildLayout();
+              evaluate();
               saveGeometry();
             });
             tr.appendChild(el("td", {}, [input]));
@@ -3413,6 +3882,7 @@
               if (isNaN(value)) return;
               c[key] = value;
               buildChart();
+              evaluate();
               saveCurves();
             });
             return el("label", { class: "minifield" }, [
@@ -3454,6 +3924,7 @@
           state.axisMax = 30;
           renderCurveTable();
           buildChart();
+          evaluate();
           saveCurves();
         });
 
