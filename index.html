@@ -1,0 +1,3869 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Declare qualitative proximity relationships between facility centers, place the layout, and see the relationships drawn on it." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%220.9em%22%20x%3D%2250%25%22%20text-anchor%3D%22middle%22%20font-size%3D%2290%22%3E%F0%9F%93%90%3C%2Ftext%3E%3C%2Fsvg%3E" />
+    <title>Proximity Relationship Table</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap"
+    />
+
+    <style>
+      :root {
+        --bg: #e7ecf1;
+        --surface: #ffffff;
+        --surface-2: #f2f5f8;
+        --ink: #101820;
+        --ink-2: #44566a;
+        --muted: #6d8296;
+        --line: #c6d2dd;
+        --line-soft: #dde5ec;
+        --accent: #0c5c9e;
+        --accent-soft: #e2edf7;
+        --warn: #9a5b00;
+        --warn-soft: #fbeedb;
+        --danger: #a32218;
+
+        /* Drawing encoding — fixed by the course legend, theme-independent
+           because the layout drawing always sits on white paper. */
+        --rel-adjacent: #000000;
+        --rel-very-near: #0a6b2b;
+        --rel-near: #1fcf39;
+        --rel-far: #f07f1a;
+        --rel-very-far: #de1b18;
+        --paper: #fcfcfb;
+        --paper-line: #d9ded8;
+
+        --radius: 6px;
+        --gap: 18px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #0d1319;
+          --surface: #151d25;
+          --surface-2: #1b242d;
+          --ink: #e4ebf2;
+          --ink-2: #a9bccd;
+          --muted: #7e93a6;
+          --line: #2c3a46;
+          --line-soft: #232f39;
+          --accent: #56a8e8;
+          --accent-soft: #16303f;
+          --warn: #e5ac5c;
+          --warn-soft: #33270f;
+          --danger: #f2796c;
+        }
+      }
+
+      :root[data-theme="dark"] {
+        --bg: #0d1319;
+        --surface: #151d25;
+        --surface-2: #1b242d;
+        --ink: #e4ebf2;
+        --ink-2: #a9bccd;
+        --muted: #7e93a6;
+        --line: #2c3a46;
+        --line-soft: #232f39;
+        --accent: #56a8e8;
+        --accent-soft: #16303f;
+        --warn: #e5ac5c;
+        --warn-soft: #33270f;
+        --danger: #f2796c;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          "IBM Plex Sans",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .wrap {
+        max-width: 1220px;
+        margin: 0 auto;
+        padding-inline: 16px;
+        padding-block: 32px 64px;
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+      }
+
+      /* ---------- header ---------- */
+
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        border-bottom: 2px solid var(--ink);
+        padding-bottom: 18px;
+      }
+
+      .eyebrow {
+        margin: 0;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "IBM Plex Serif", Georgia, serif;
+        font-size: clamp(26px, 4.4vw, 38px);
+        font-weight: 600;
+        letter-spacing: -0.015em;
+        text-wrap: balance;
+      }
+
+      .lede {
+        margin: 0;
+        max-width: 62ch;
+        color: var(--ink-2);
+      }
+
+      .cite {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+        max-width: 78ch;
+      }
+
+      /* ---------- toolbar ---------- */
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      button {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 7px 13px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      button.primary:hover {
+        color: #fff;
+        filter: brightness(1.08);
+      }
+
+      .toolbar-note {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      /* ---------- issues ---------- */
+
+      .issues {
+        background: var(--warn-soft);
+        border: 1px solid var(--warn);
+        border-radius: var(--radius);
+        padding: 11px 14px;
+        font-size: 13px;
+        color: var(--warn);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .issues strong {
+        font-weight: 600;
+      }
+
+      /* ---------- table ---------- */
+
+      .tablewrap {
+        overflow-x: auto;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      #grid {
+        min-width: 1180px;
+      }
+
+      thead th {
+        background: var(--surface-2);
+        color: var(--ink-2);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+      }
+
+      thead tr.group th {
+        text-align: center;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        letter-spacing: 0.1em;
+        color: var(--ink);
+        border-bottom: 1px solid var(--line-soft);
+        background: var(--surface-2);
+      }
+
+      thead tr.group th.spacer {
+        background: var(--surface);
+      }
+
+      th.rule-left,
+      td.rule-left {
+        border-left: 1px solid var(--line);
+      }
+
+      tbody td {
+        padding: 5px 10px;
+        border-bottom: 1px solid var(--line-soft);
+        vertical-align: middle;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      tbody tr.invalid td {
+        background: var(--warn-soft);
+      }
+
+      td.idx {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--muted);
+        text-align: right;
+        width: 34px;
+        padding-right: 4px;
+      }
+
+      td.weight {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      td.weight .constraint {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+      }
+
+      select {
+        font: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        padding: 4px 22px 4px 6px;
+        width: 100%;
+        min-width: 76px;
+        cursor: pointer;
+        appearance: none;
+        background-image:
+          linear-gradient(45deg, transparent 50%, currentColor 50%),
+          linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position:
+          right 10px top 50%,
+          right 6px top 50%;
+        background-size:
+          4px 4px,
+          4px 4px;
+        background-repeat: no-repeat;
+      }
+
+      select:hover {
+        border-color: var(--line);
+        background-color: var(--surface-2);
+      }
+
+      select.pair {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-weight: 600;
+        min-width: 64px;
+      }
+
+      /* ---------- I/O station direction ---------- */
+
+      .measure {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+        min-width: 148px;
+      }
+
+      .dir {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--ink-2);
+        background: var(--accent-soft);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 1px 3px 1px 8px;
+        white-space: nowrap;
+      }
+
+      .dir .swap {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1;
+        padding: 2px 5px;
+        border-radius: 999px;
+      }
+
+      .dir .swap:hover {
+        color: var(--accent);
+        background: var(--surface);
+      }
+
+      /* ---------- reason multiselect ---------- */
+
+      .multi {
+        position: relative;
+        min-width: 132px;
+      }
+
+      .multi > summary {
+        list-style: none;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 4px 22px 4px 6px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        white-space: nowrap;
+        max-width: 230px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        background-image:
+          linear-gradient(45deg, transparent 50%, currentColor 50%),
+          linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position:
+          right 10px top 50%,
+          right 6px top 50%;
+        background-size:
+          4px 4px,
+          4px 4px;
+        background-repeat: no-repeat;
+      }
+
+      .multi > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .multi > summary:hover {
+        border-color: var(--line);
+        background-color: var(--surface-2);
+      }
+
+      .multi[open] > summary {
+        border-color: var(--accent);
+      }
+
+      .multi .menu {
+        position: absolute;
+        z-index: 30;
+        top: calc(100% + 3px);
+        left: 0;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: 0 8px 22px rgb(16 24 32 / 0.16);
+        padding: 7px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 170px;
+      }
+
+      .multi .menu label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        padding: 3px 5px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .multi .menu label:hover {
+        background: var(--surface-2);
+      }
+
+      .multi .menu input {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+
+      .multi .menu .other {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-top: 5px;
+        padding-top: 6px;
+        border-top: 1px solid var(--line-soft);
+      }
+
+      .multi .menu .other-text {
+        font: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 5px 7px;
+        width: 100%;
+      }
+
+      .multi .menu .other-text::placeholder {
+        color: var(--muted);
+      }
+
+      .multi .menu .other-text:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+
+      /* ---------- style preview ---------- */
+
+      td.preview {
+        width: 118px;
+        padding: 4px 10px;
+      }
+
+      .swatch {
+        display: block;
+        background: var(--paper);
+        border: 1px solid var(--paper-line);
+        border-radius: 3px;
+      }
+
+      td.act {
+        width: 34px;
+        padding-right: 8px;
+      }
+
+      .del {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1;
+        padding: 4px 6px;
+        border-radius: 4px;
+      }
+
+      .del:hover {
+        color: var(--danger);
+        background: var(--surface-2);
+      }
+
+      tfoot td {
+        padding: 11px 10px;
+        border-top: 2px solid var(--ink);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        text-align: right;
+      }
+
+      tfoot td.total {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 17px;
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ---------- stats ---------- */
+
+      .stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        padding: 14px 16px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+
+      .stat {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .stat dt {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 500;
+      }
+
+      .stat dd {
+        margin: 0;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 19px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stat.key dd {
+        color: var(--accent);
+      }
+
+      /* ---------- legend ---------- */
+
+      .legend {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+        gap: var(--gap);
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+      }
+
+      .panel h2 {
+        margin: 0 0 12px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .legend-row {
+        display: grid;
+        grid-template-columns: 1fr 86px;
+        align-items: center;
+        gap: 12px;
+        padding: 5px 0;
+        border-bottom: 1px solid var(--line-soft);
+        font-size: 13px;
+      }
+
+      .legend-row:last-child {
+        border-bottom: none;
+      }
+
+      .legend-row .label {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: baseline;
+      }
+
+      .legend-row .meta {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* ---------- layout geometry ---------- */
+
+      .geo {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .geo-tools {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px;
+      }
+
+      .geo-paper {
+        padding: 12px;
+      }
+
+      /* Written as .paper.geo-paper so it outranks the generic .paper svg rule
+         that follows it in the sheet. The drawing is close to square, so it has
+         to be capped by height or it fills the screen. */
+      .paper.geo-paper svg {
+        display: block;
+        margin-inline: auto;
+        width: 100%;
+        max-width: 860px;
+        height: auto;
+        max-height: 78vh;
+        touch-action: none;
+      }
+
+      .geo-paper .block {
+        cursor: grab;
+      }
+
+      .geo-paper .block.dragging {
+        cursor: grabbing;
+      }
+
+      .geo-paper .handle {
+        cursor: nwse-resize;
+      }
+
+      .geo-paper .station {
+        cursor: grab;
+      }
+
+      .geotable {
+        min-width: 820px;
+      }
+
+      /* The value boxes are a fixed width and sit at the left of a much wider
+         cell, so right-aligned headers floated away from their own numbers. */
+      .geotable th,
+      .geotable td,
+      .geotable input.num {
+        text-align: left;
+      }
+
+      .unused {
+        font-family: "IBM Plex Sans", system-ui, sans-serif;
+        font-size: 11px;
+        color: var(--muted);
+        font-style: italic;
+        margin-bottom: 2px;
+      }
+
+      /* The edge select would otherwise take the full cell width and sit on top
+         of the position field. */
+      .station-pair {
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 8px;
+      }
+
+      .station-pair select {
+        width: auto;
+        min-width: 92px;
+      }
+
+      .station-pair input.num {
+        width: 68px;
+        flex: none;
+      }
+
+      td.station-cell {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: var(--ink-2);
+        white-space: nowrap;
+      }
+
+      /* ---------- satisfaction curves ---------- */
+
+      /* The chart is drawing paper: it keeps the course's line colours, which
+         only resolve against a light ground, in both themes. */
+      .paper {
+        background: #fcfcfa;
+        border: 1px solid #d9ded8;
+        border-radius: var(--radius);
+        padding: 10px 12px 4px;
+        position: relative;
+      }
+
+      .paper svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .curve-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        padding: 2px 4px 10px;
+      }
+
+      .curve-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #2a3540;
+        white-space: nowrap;
+      }
+
+      .curve-legend svg {
+        width: 26px;
+        height: 10px;
+        flex: none;
+      }
+
+      .tip {
+        position: absolute;
+        z-index: 5;
+        pointer-events: none;
+        background: #101820;
+        color: #f4f7fa;
+        border-radius: 5px;
+        padding: 7px 9px;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: nowrap;
+        box-shadow: 0 6px 18px rgb(16 24 32 / 0.28);
+      }
+
+      .tip .tip-head {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-weight: 600;
+        margin-bottom: 3px;
+      }
+
+      .tip .tip-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .tip .tip-row .v {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      .curvetable {
+        min-width: 640px;
+      }
+
+      .params {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .minifield {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .minifield > span {
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      td.form span {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 1px 9px;
+      }
+
+      td.curvename {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      /* ---------- importance scale editor ---------- */
+
+      .scale {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .scale-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .scale-head h2 {
+        margin: 0;
+      }
+
+      .scale-lede {
+        margin: 0;
+        max-width: 68ch;
+        font-size: 13px;
+        color: var(--ink-2);
+      }
+
+      .scalewrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+
+      .scaletable {
+        min-width: 660px;
+      }
+
+      .scaletable tbody td {
+        padding: 6px 10px;
+      }
+
+      .scaletable tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      input.f {
+        font: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 5px 7px;
+        width: 100%;
+      }
+
+      input.f:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+
+      input.f:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      input.num {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        width: 78px;
+      }
+
+      td.used {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        text-align: right;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .constraint-cell {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--ink-2);
+        white-space: nowrap;
+      }
+
+      .constraint-cell input {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+
+      .scale-add {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px;
+        padding: 14px;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .field > span {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .field.grow {
+        flex: 1 1 180px;
+        min-width: 150px;
+      }
+
+      .field.check {
+        justify-content: flex-end;
+        padding-bottom: 6px;
+      }
+
+      .scale-msg {
+        margin: 0;
+        font-size: 13px;
+        min-height: 1.2em;
+      }
+
+      .scale-msg.err {
+        color: var(--danger);
+      }
+
+      .scale-msg.ok {
+        color: var(--accent);
+      }
+
+      .panel p.note {
+        margin: 12px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      footer.pagefoot {
+        font-size: 12px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
+      footer.pagefoot code {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        background: var(--surface-2);
+        border: 1px solid var(--line-soft);
+        border-radius: 3px;
+        padding: 1px 5px;
+      }
+
+      @media (max-width: 560px) {
+        .stats {
+          gap: 18px 24px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+    </style>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      img {
+        max-width: 100%;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">ISyE 6202 · 6335 — Facilities Layout</p>
+        <h1>Proximity Relationship Table</h1>
+        <p class="lede">
+          Declare every qualitative proximity relationship between centers.
+          Importance sets the weight and the drawn line width; desired proximity
+          sets the drawn colour. Loaded with the Layout&nbsp;0 relationship set.
+        </p>
+        <p class="cite">
+          Relationship model: Evans, G.W., M.R. Wilhelm &amp; W. Karwowski (1987),
+          <em>A layout design heuristic employing the theory of fuzzy sets</em>,
+          International Journal of Production Research, v25 no10, 1431–1450. Case
+          and encoding: Montreuil, B. (2008),
+          <em>Facilities Location and Layout Design</em>, ch.&nbsp;5.
+        </p>
+      </header>
+
+      <div class="toolbar">
+        <button class="primary" id="add">Add relationship</button>
+        <button id="copy-json">Copy JSON</button>
+        <button id="copy-csv">Copy CSV</button>
+        <button id="reset">Reset to Layout 0</button>
+        <span class="toolbar-note" id="toolbar-note"></span>
+      </div>
+
+      <div class="issues" id="issues" hidden></div>
+
+      <div class="tablewrap">
+        <table id="grid">
+          <thead>
+            <tr class="group">
+              <th class="spacer" colspan="1"></th>
+              <th colspan="2">Pair of centers</th>
+              <th colspan="3" class="rule-left">Proximity relationship</th>
+              <th colspan="2" class="rule-left">Measure</th>
+              <th class="rule-left">Importance</th>
+              <th class="rule-left">Drawn as</th>
+              <th class="spacer"></th>
+            </tr>
+            <tr>
+              <th></th>
+              <th>Center 1</th>
+              <th>Center 2</th>
+              <th class="rule-left">Importance</th>
+              <th>Desired proximity</th>
+              <th>Reason</th>
+              <th class="rule-left">Between</th>
+              <th>Distance metric</th>
+              <th class="rule-left" style="text-align: right">weight</th>
+              <th class="rule-left">colour · width</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="8">Maximum possible value</td>
+              <td class="total rule-left" id="max-value">0</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <dl class="stats">
+        <div class="stat">
+          <dt>Relationships</dt>
+          <dd id="s-total">0</dd>
+        </div>
+        <div class="stat">
+          <dt>Scored</dt>
+          <dd id="s-scored">0</dd>
+        </div>
+        <div class="stat">
+          <dt>Vital constraints</dt>
+          <dd id="s-vital">0</dd>
+        </div>
+        <div class="stat key">
+          <dt>Maximum possible value</dt>
+          <dd id="s-max">0</dd>
+        </div>
+      </dl>
+
+      <div class="legend">
+        <section class="panel">
+          <h2>Desired proximity → colour</h2>
+          <div id="legend-colour"></div>
+          <p class="note">
+            Colour states what the relationship <em>asks for</em>, not whether the
+            layout delivers it. “Not far” is the same orange as “far”, drawn dotted.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2>Importance → line width &amp; weight</h2>
+          <div id="legend-width"></div>
+          <p class="note">
+            Weights step by powers of four, so one critical relationship outranks
+            sixty-three desirable ones. Vital relationships carry no weight — they
+            are feasibility constraints, drawn at width 18 with a white X.
+          </p>
+        </section>
+      </div>
+
+      <section class="panel geo">
+        <div class="scale-head">
+          <h2>Layout geometry</h2>
+          <span class="constraint-cell">
+            <input id="show-lines" type="checkbox" checked />
+            Show relationships
+          </span>
+          <button id="reset-geo" type="button">Reset to Layout 0</button>
+        </div>
+
+        <p class="scale-lede">
+          Drag a center to move it, drag the square at its lower-right corner to
+          resize, and drag a triangle to slide that station around its center's
+          walls. A hollow triangle pointing inward is the input station; a solid one
+          pointing outward is the output. The relationship table decides which
+          stations exist: a center gets an output the moment some relationship
+          measures from it and an input the moment one measures to it, and the
+          station leaves again when the last of those relationships does. This table
+          only sets where each one sits, and a position is remembered while unused.
+          Traced from the course drawing — the block positions reproduce the
+          centroid distances the course reports for B–D, B–C and C–D.
+        </p>
+
+        <div class="paper geo-paper">
+          <div id="layout"></div>
+        </div>
+
+        <div class="issues" id="geo-issues" hidden></div>
+
+        <div class="scalewrap">
+          <table class="geotable">
+            <thead>
+              <tr>
+                <th>Center</th>
+                <th>Kind</th>
+                <th>x</th>
+                <th>y</th>
+                <th>width</th>
+                <th>height</th>
+                <th>Input station</th>
+                <th>Output station</th>
+              </tr>
+            </thead>
+            <tbody id="geo-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel curves">
+        <div class="scale-head">
+          <h2>Satisfaction curves</h2>
+          <button id="reset-curves" type="button">Reset to default curves</button>
+        </div>
+
+        <p class="scale-lede">
+          One curve per desired proximity. Read a relationship's desired proximity
+          from the table, take its measured distance along the bottom, and the curve
+          gives the satisfaction that multiplies its weight. Adjacent through Not
+          far fall as distance grows; Far and Very far rise. The dots are the
+          distances and satisfactions the course case reports — a curve that misses
+          them will not reproduce Layout 0's score.
+        </p>
+
+        <div class="paper" id="chart-paper">
+          <div class="curve-legend" id="curve-legend"></div>
+          <div id="chart"></div>
+        </div>
+
+        <div class="scalewrap">
+          <table class="curvetable">
+            <thead>
+              <tr>
+                <th>Desired proximity</th>
+                <th>Form</th>
+                <th>Parameters (meters)</th>
+                <th>Drawn as</th>
+              </tr>
+            </thead>
+            <tbody id="curve-rows"></tbody>
+          </table>
+        </div>
+
+        <p class="note">
+          A <strong>ramp</strong> runs between the distance where satisfaction is 1
+          and the distance where it is 0; <em>bend</em> curves it — 1 is a straight
+          line, above 1 drops off faster at first, below 1 holds on longer. A
+          <strong>bell</strong> peaks at its ideal distance and falls away on both
+          sides, reaching half satisfaction one half-width out; it is the only form
+          that can say &ldquo;not too far, not too near&rdquo;, where closer is not
+          always better. The axis runs to <span id="axis-label">30</span>&nbsp;m —
+          raise it for a larger facility.
+        </p>
+      </section>
+
+      <section class="panel scale">
+        <div class="scale-head">
+          <h2>Importance scale</h2>
+          <button id="reset-scale" type="button">Reset to course scale</button>
+        </div>
+
+        <p class="scale-lede">
+          Every level available in the table's Importance column. Rename one, change
+          its weight or its drawn line width, or add a level of your own — the
+          Importance dropdown and the maximum possible value update straight away. A
+          level marked <em>constraint</em> carries no weight: it must be satisfied
+          for the layout to be feasible, and is drawn with a white X.
+        </p>
+
+        <div class="scalewrap">
+          <table class="scaletable">
+            <thead>
+              <tr>
+                <th>Level</th>
+                <th style="text-align: right">weight</th>
+                <th style="text-align: right">line width</th>
+                <th>Not scored</th>
+                <th>Drawn as</th>
+                <th style="text-align: right">Used by</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="scale-rows"></tbody>
+          </table>
+        </div>
+
+        <form class="scale-add" id="scale-add">
+          <label class="field grow">
+            <span>Level name</span>
+            <input
+              class="f"
+              id="new-name"
+              type="text"
+              placeholder="Somewhat important"
+              maxlength="40"
+            />
+          </label>
+          <label class="field">
+            <span>weight</span>
+            <input
+              class="f num"
+              id="new-weight"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="2"
+            />
+          </label>
+          <label class="field">
+            <span>line width</span>
+            <input
+              class="f num"
+              id="new-width"
+              type="number"
+              min="0.5"
+              step="0.5"
+              placeholder="2.5"
+            />
+          </label>
+          <label class="field check">
+            <span class="constraint-cell">
+              <input id="new-constraint" type="checkbox" />
+              Not scored
+            </span>
+          </label>
+          <button class="primary" id="add-level" type="submit">Add level</button>
+        </form>
+
+        <p class="scale-msg" id="scale-msg"></p>
+      </section>
+
+      <footer class="pagefoot">
+        Next step: place the centers and I/O stations so the
+        <code>Between</code> and <code>Distance metric</code> columns have geometry
+        to measure against.
+      </footer>
+    </div>
+
+    <script>
+      "use strict";
+
+      /* ------------------------------------------------------------------
+         Domain vocabulary
+         ------------------------------------------------------------------ */
+
+      var CENTERS = [
+        "MP",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "PF",
+        "OUT",
+      ];
+
+      /* The course's five levels. Editable at the bottom of the page: the user
+         may rename these, change weight or line width, and add levels of their
+         own. A level with a null weight is a feasibility constraint, not scored,
+         and is drawn with a white X. */
+      var DEFAULT_LEVELS = [
+        { name: "Vital", weight: null, width: 18 },
+        { name: "Critical", weight: 64, width: 12 },
+        { name: "Very important", weight: 16, width: 6 },
+        { name: "Important", weight: 4, width: 3 },
+        { name: "Desirable", weight: 1, width: 2 },
+      ];
+
+      /* Ordered as a spectrum, matching the satisfaction-curve legend. */
+      var PROXIMITY = [
+        { name: "Adjacent", colour: "#000000", dashed: false },
+        { name: "Very near", colour: "#0a6b2b", dashed: false },
+        { name: "Near", colour: "#1fcf39", dashed: false },
+        { name: "Not far", colour: "#f07f1a", dashed: true },
+        { name: "Far", colour: "#f07f1a", dashed: false },
+        { name: "Very far", colour: "#de1b18", dashed: false },
+        /* Beyond the course's six. A relationship that wants an ideal separation
+           — too close is as bad as too far — cannot be expressed by a monotonic
+           curve, so this one is bell shaped. Purple was picked because it is the
+           only spare hue that does not worsen the palette's CVD separation. */
+        { name: "Not too far, not too near", colour: "#7b3294", dashed: false },
+      ];
+
+      var REASONS = [
+        { name: "Flow", abbr: "Flow" },
+        { name: "Infrastructure", abbr: "Infra" },
+        { name: "Organization", abbr: "Org" },
+        { name: "Safety", abbr: "Safety" },
+        { name: "Noise", abbr: "Noise" },
+        { name: "Process", abbr: "Process" },
+      ];
+
+      var BETWEEN = ["I/O", "Centroid", "Boundaries"];
+      var METRICS = ["Aisle", "Rectilinear", "Euclidean"];
+
+      /* ------------------------------------------------------------------
+         Layout 0 relationship set (course slide 9/66)
+         ------------------------------------------------------------------ */
+
+      function r(c1, c2, imp, prox, reasons, between, metric) {
+        return {
+          c1: c1,
+          c2: c2,
+          importance: imp,
+          proximity: prox,
+          reasons: reasons,
+          between: between,
+          metric: metric,
+        };
+      }
+
+      var LAYOUT_0 = [
+        r("MP", "A", "Important", "Near", ["Flow"], "I/O", "Aisle"),
+        r("MP", "E", "Very important", "Near", ["Flow"], "I/O", "Aisle"),
+        r("MP", "OUT", "Vital", "Adjacent", ["Flow"], "Boundaries", "Rectilinear"),
+        r("A", "C", "Important", "Near", ["Flow"], "I/O", "Aisle"),
+        r(
+          "B",
+          "C",
+          "Very important",
+          "Not far",
+          ["Infrastructure"],
+          "Centroid",
+          "Rectilinear",
+        ),
+        r(
+          "B",
+          "D",
+          "Very important",
+          "Not far",
+          ["Infrastructure"],
+          "Centroid",
+          "Rectilinear",
+        ),
+        r("B", "J", "Important", "Near", ["Flow"], "I/O", "Aisle"),
+        r(
+          "C",
+          "D",
+          "Very important",
+          "Not far",
+          ["Infrastructure"],
+          "Centroid",
+          "Rectilinear",
+        ),
+        r("C", "E", "Important", "Near", ["Flow"], "I/O", "Aisle"),
+        r(
+          "D",
+          "G",
+          "Very important",
+          "Very far",
+          ["Safety"],
+          "Centroid",
+          "Euclidean",
+        ),
+        r("E", "F", "Very important", "Near", ["Flow"], "I/O", "Aisle"),
+        r(
+          "E",
+          "G",
+          "Desirable",
+          "Not far",
+          ["Organization"],
+          "Boundaries",
+          "Aisle",
+        ),
+        r(
+          "E",
+          "PF",
+          "Critical",
+          "Very near",
+          ["Flow", "Organization"],
+          "I/O",
+          "Aisle",
+        ),
+        r("F", "G", "Important", "Far", ["Noise"], "Centroid", "Euclidean"),
+        r("F", "H", "Very important", "Near", ["Flow"], "I/O", "Aisle"),
+        r("G", "H", "Important", "Not far", ["Process"], "Boundaries", "Aisle"),
+        r("G", "I", "Very important", "Near", ["Flow"], "I/O", "Aisle"),
+        r(
+          "G",
+          "OUT",
+          "Critical",
+          "Adjacent",
+          ["Flow"],
+          "Boundaries",
+          "Rectilinear",
+        ),
+        r(
+          "H",
+          "I",
+          "Vital",
+          "Adjacent",
+          ["Infrastructure", "Organization", "Flow"],
+          "Boundaries",
+          "Rectilinear",
+        ),
+        r("I", "PF", "Critical", "Near", ["Flow"], "I/O", "Aisle"),
+        r("PF", "OUT", "Vital", "Adjacent", ["Flow"], "Boundaries", "Rectilinear"),
+      ];
+
+      var STORAGE_KEY = "isye6202.proximity.rows.v1";
+      var SCALE_KEY = "isye6202.proximity.levels.v1";
+
+      /* ------------------------------------------------------------------
+         Lookups
+         ------------------------------------------------------------------ */
+
+      function importanceOf(name) {
+        for (var i = 0; i < state.levels.length; i++) {
+          if (state.levels[i].name === name) return state.levels[i];
+        }
+        /* A row left pointing at a level that no longer exists. Surfaced by
+           findIssues rather than silently folded into another level. */
+        return { name: name, weight: null, width: 2, missing: true };
+      }
+
+      function levelNames() {
+        return state.levels.map(function (level) {
+          return level.name;
+        });
+      }
+
+      function cloneLevels(list) {
+        return list.map(function (level) {
+          return { name: level.name, weight: level.weight, width: level.width };
+        });
+      }
+
+      function proximityOf(name) {
+        for (var i = 0; i < PROXIMITY.length; i++) {
+          if (PROXIMITY[i].name === name) return PROXIMITY[i];
+        }
+        return PROXIMITY[0];
+      }
+
+      function abbrOf(name) {
+        for (var i = 0; i < REASONS.length; i++) {
+          if (REASONS[i].name === name) return REASONS[i].abbr;
+        }
+        /* A reason typed by the user has no abbreviation — print it as typed. */
+        return name;
+      }
+
+      function isStandardReason(name) {
+        for (var i = 0; i < REASONS.length; i++) {
+          if (REASONS[i].name === name) return true;
+        }
+        return false;
+      }
+
+      /* At most one free-text reason per relationship: the first entry that is
+         not one of the six standard reasons. */
+      function customReasonOf(reasons) {
+        var list = reasons || [];
+        for (var i = 0; i < list.length; i++) {
+          if (!isStandardReason(list[i])) return list[i];
+        }
+        return "";
+      }
+
+      /* A lone reason reads in full; a combination reads abbreviated, the way
+         the source table prints "Flow+Org" and "Infra+Org+Flow". */
+      function reasonLabel(reasons) {
+        if (!reasons || reasons.length === 0) return "—";
+        if (reasons.length === 1) return reasons[0];
+        return reasons.map(abbrOf).join("+");
+      }
+
+      /* ------------------------------------------------------------------
+         State
+         ------------------------------------------------------------------ */
+
+      var state = {
+        rows: [],
+        levels: [],
+        curves: {},
+        axisMax: 30,
+        building: { w: 50, h: 45 },
+        centers: [],
+        snap: 0.5,
+        showLines: true,
+      };
+
+      function cloneLayout0() {
+        return LAYOUT_0.map(function (row) {
+          return {
+            c1: row.c1,
+            c2: row.c2,
+            importance: row.importance,
+            proximity: row.proximity,
+            reasons: row.reasons.slice(),
+            between: row.between,
+            metric: row.metric,
+          };
+        });
+      }
+
+      function load() {
+        try {
+          var raw = window.localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length) return parsed;
+          }
+        } catch (err) {
+          /* private window, blocked storage — fall through to the example set */
+        }
+        return cloneLayout0();
+      }
+
+      function loadLevels() {
+        try {
+          var raw = window.localStorage.getItem(SCALE_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length) return parsed;
+          }
+        } catch (err) {
+          /* private window, blocked storage — fall through to the course scale */
+        }
+        return cloneLevels(DEFAULT_LEVELS);
+      }
+
+      function save() {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.rows));
+          window.localStorage.setItem(SCALE_KEY, JSON.stringify(state.levels));
+        } catch (err) {
+          /* nothing to do: the table still works without a saved draft */
+        }
+      }
+
+      /* ------------------------------------------------------------------
+         DOM helpers
+         ------------------------------------------------------------------ */
+
+      function el(tag, attrs, children) {
+        var node = document.createElement(tag);
+        if (attrs) {
+          Object.keys(attrs).forEach(function (k) {
+            if (k === "class") node.className = attrs[k];
+            else if (k === "text") node.textContent = attrs[k];
+            else node.setAttribute(k, attrs[k]);
+          });
+        }
+        (children || []).forEach(function (c) {
+          node.appendChild(c);
+        });
+        return node;
+      }
+
+      function makeSelect(options, value, id, cls, onChange) {
+        var sel = el("select", { id: id, class: cls || "" });
+        options.forEach(function (opt) {
+          var o = el("option", { value: opt, text: opt });
+          if (opt === value) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", function () {
+          onChange(sel.value);
+        });
+        return sel;
+      }
+
+      function names(list) {
+        return list.map(function (x) {
+          return x.name;
+        });
+      }
+
+      /* ------------------------------------------------------------------
+         Line preview — the same colour and width the relationship gets
+         when it is drawn on the layout.
+         ------------------------------------------------------------------ */
+
+      var SVG_NS = "http://www.w3.org/2000/svg";
+
+      function drawStyle(target, importanceName, proximityName) {
+        while (target.firstChild) target.removeChild(target.firstChild);
+
+        var imp = importanceOf(importanceName);
+        var prox = proximityOf(proximityName);
+
+        var w = 100;
+        var h = 30;
+        var stroke = Math.max(1.5, imp.width * 0.85);
+
+        var svg = document.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("class", "swatch");
+        svg.setAttribute("width", String(w));
+        svg.setAttribute("height", String(h));
+        svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+        svg.setAttribute("role", "img");
+        svg.setAttribute(
+          "aria-label",
+          proximityName + ", " + importanceName + ", line width " + imp.width,
+        );
+
+        var line = document.createElementNS(SVG_NS, "line");
+        line.setAttribute("x1", "10");
+        line.setAttribute("y1", String(h / 2));
+        line.setAttribute("x2", String(w - 10));
+        line.setAttribute("y2", String(h / 2));
+        line.setAttribute("stroke", prox.colour);
+        line.setAttribute("stroke-width", String(stroke));
+        line.setAttribute("stroke-linecap", "butt");
+        line.setAttribute("fill", "none");
+        if (prox.dashed) {
+          line.setAttribute(
+            "stroke-dasharray",
+            Math.max(5, stroke * 1.6) + " " + Math.max(4, stroke),
+          );
+        }
+        svg.appendChild(line);
+
+        /* A constraint level is marked with a white X on the bar. */
+        if (imp.weight === null) {
+          var cx = w / 2;
+          var cy = h / 2;
+          var arm = 5.5;
+          [
+            [cx - arm, cy - arm, cx + arm, cy + arm],
+            [cx - arm, cy + arm, cx + arm, cy - arm],
+          ].forEach(function (p) {
+            var x = document.createElementNS(SVG_NS, "line");
+            x.setAttribute("x1", String(p[0]));
+            x.setAttribute("y1", String(p[1]));
+            x.setAttribute("x2", String(p[2]));
+            x.setAttribute("y2", String(p[3]));
+            x.setAttribute("stroke", "#ffffff");
+            x.setAttribute("stroke-width", "2.4");
+            x.setAttribute("stroke-linecap", "round");
+            x.setAttribute("fill", "none");
+            svg.appendChild(x);
+          });
+        }
+
+        target.appendChild(svg);
+      }
+
+      /* ------------------------------------------------------------------
+         Reason multi-select
+         ------------------------------------------------------------------ */
+
+      function makeReasonPicker(row, onChange) {
+        var details = el("details", { class: "multi" });
+        var summary = el("summary", {
+          text: reasonLabel(row.reasons),
+          tabindex: "0",
+        });
+        var menu = el("div", { class: "menu" });
+
+        REASONS.forEach(function (reason) {
+          var input = el("input", { type: "checkbox" });
+          input.checked = row.reasons.indexOf(reason.name) !== -1;
+          input.addEventListener("change", function () {
+            if (input.checked) {
+              if (row.reasons.indexOf(reason.name) === -1)
+                row.reasons.push(reason.name);
+            } else {
+              row.reasons = row.reasons.filter(function (n) {
+                return n !== reason.name;
+              });
+            }
+            summary.textContent = reasonLabel(row.reasons);
+            onChange();
+          });
+          menu.appendChild(
+            el("label", {}, [input, el("span", { text: reason.name })]),
+          );
+        });
+
+        /* Free-text reason, for anything the six standard ones do not cover. */
+        var otherToggle = el("input", { type: "checkbox" });
+        var otherText = el("input", {
+          type: "text",
+          class: "other-text",
+          placeholder: "Reason…",
+          maxlength: "40",
+          "aria-label": "Other reason",
+        });
+        otherText.value = customReasonOf(row.reasons);
+        otherToggle.checked = otherText.value !== "";
+
+        function setCustomReason(raw) {
+          var value = raw.trim();
+          var at = -1;
+          for (var i = 0; i < row.reasons.length; i++) {
+            if (!isStandardReason(row.reasons[i])) {
+              at = i;
+              break;
+            }
+          }
+          if (value === "") {
+            if (at !== -1) row.reasons.splice(at, 1);
+          } else if (at !== -1) {
+            row.reasons[at] = value;
+          } else {
+            row.reasons.push(value);
+          }
+          summary.textContent = reasonLabel(row.reasons);
+          onChange();
+        }
+
+        otherToggle.addEventListener("change", function () {
+          if (otherToggle.checked) {
+            otherText.focus();
+            setCustomReason(otherText.value);
+          } else {
+            setCustomReason("");
+          }
+        });
+
+        otherText.addEventListener("input", function () {
+          otherToggle.checked = otherText.value.trim() !== "";
+          setCustomReason(otherText.value);
+        });
+
+        menu.appendChild(
+          el("div", { class: "other" }, [
+            el("label", {}, [otherToggle, el("span", { text: "Other" })]),
+            otherText,
+          ]),
+        );
+
+        details.appendChild(summary);
+        details.appendChild(menu);
+
+        /* Only one picker open at a time; click-away closes it. */
+        details.addEventListener("toggle", function () {
+          if (!details.open) return;
+          document
+            .querySelectorAll("details.multi[open]")
+            .forEach(function (other) {
+              if (other !== details) other.open = false;
+            });
+        });
+
+        return details;
+      }
+
+      document.addEventListener("click", function (event) {
+        document.querySelectorAll("details.multi[open]").forEach(function (d) {
+          if (!d.contains(event.target)) d.open = false;
+        });
+      });
+
+      /* ------------------------------------------------------------------
+         Row rendering
+         ------------------------------------------------------------------ */
+
+      function renderRow(row, index) {
+        var tr = el("tr");
+        tr.appendChild(el("td", { class: "idx", text: String(index + 1) }));
+
+        var weightCell = el("td", { class: "weight rule-left" });
+        var previewCell = el("td", { class: "preview rule-left" });
+
+        function refresh() {
+          var imp = importanceOf(row.importance);
+          while (weightCell.firstChild)
+            weightCell.removeChild(weightCell.firstChild);
+          if (imp.weight === null) {
+            weightCell.appendChild(
+              el("span", { class: "constraint", text: "constraint" }),
+            );
+          } else {
+            weightCell.appendChild(document.createTextNode(String(imp.weight)));
+          }
+          drawStyle(previewCell, row.importance, row.proximity);
+          commit();
+        }
+
+        tr.appendChild(
+          el("td", {}, [
+            makeSelect(CENTERS, row.c1, "c1-" + index, "pair", function (v) {
+              row.c1 = v;
+              refreshDirection();
+              commit();
+            }),
+          ]),
+        );
+        tr.appendChild(
+          el("td", {}, [
+            makeSelect(CENTERS, row.c2, "c2-" + index, "pair", function (v) {
+              row.c2 = v;
+              refreshDirection();
+              commit();
+            }),
+          ]),
+        );
+
+        tr.appendChild(
+          el("td", { class: "rule-left" }, [
+            makeSelect(
+              levelNames(),
+              row.importance,
+              "imp-" + index,
+              "",
+              function (v) {
+                row.importance = v;
+                refresh();
+              },
+            ),
+          ]),
+        );
+        tr.appendChild(
+          el("td", {}, [
+            makeSelect(
+              names(PROXIMITY),
+              row.proximity,
+              "prox-" + index,
+              "",
+              function (v) {
+                row.proximity = v;
+                refresh();
+              },
+            ),
+          ]),
+        );
+        tr.appendChild(
+          el("td", {}, [
+            makeReasonPicker(row, function () {
+              commit();
+            }),
+          ]),
+        );
+
+        /* Measuring between I/O stations only makes sense for material flow, so
+           one end is always the upstream center's O and the other the downstream
+           center's I. Center 1 is upstream; the swap button reverses the pair. */
+        var dirText = el("span", {});
+        var swap = el("button", {
+          class: "swap",
+          type: "button",
+          title: "Reverse the flow direction",
+        });
+        swap.setAttribute("aria-label", "Reverse flow direction");
+        swap.textContent = "⇄";
+        swap.addEventListener("click", function () {
+          var held = row.c1;
+          row.c1 = row.c2;
+          row.c2 = held;
+          render();
+        });
+        var dir = el("div", { class: "dir" }, [dirText, swap]);
+
+        function refreshDirection() {
+          dir.hidden = row.between !== "I/O";
+          dirText.textContent = row.c1 + "·O → " + row.c2 + "·I";
+        }
+
+        tr.appendChild(
+          el("td", { class: "rule-left" }, [
+            el("div", { class: "measure" }, [
+              makeSelect(BETWEEN, row.between, "btw-" + index, "", function (v) {
+                row.between = v;
+                refreshDirection();
+                commit();
+              }),
+              dir,
+            ]),
+          ]),
+        );
+        refreshDirection();
+        tr.appendChild(
+          el("td", {}, [
+            makeSelect(METRICS, row.metric, "met-" + index, "", function (v) {
+              row.metric = v;
+              commit();
+            }),
+          ]),
+        );
+
+        tr.appendChild(weightCell);
+        tr.appendChild(previewCell);
+
+        var del = el("button", {
+          class: "del",
+          type: "button",
+          title: "Remove relationship",
+        });
+        del.setAttribute("aria-label", "Remove relationship " + (index + 1));
+        del.textContent = "×";
+        del.addEventListener("click", function () {
+          state.rows.splice(index, 1);
+          render();
+        });
+        tr.appendChild(el("td", { class: "act" }, [del]));
+
+        var imp = importanceOf(row.importance);
+        if (imp.weight === null) {
+          weightCell.appendChild(
+            el("span", { class: "constraint", text: "constraint" }),
+          );
+        } else {
+          weightCell.appendChild(document.createTextNode(String(imp.weight)));
+        }
+        drawStyle(previewCell, row.importance, row.proximity);
+
+        return tr;
+      }
+
+      /* ------------------------------------------------------------------
+         Validation, totals, rendering
+         ------------------------------------------------------------------ */
+
+      function pairKey(row) {
+        return [row.c1, row.c2].sort().join("·");
+      }
+
+      function findIssues() {
+        var issues = [];
+        var seen = {};
+        var flagged = {};
+
+        state.rows.forEach(function (row, i) {
+          if (row.c1 === row.c2) {
+            issues.push(
+              "Row " +
+                (i + 1) +
+                ": a center cannot relate to itself (" +
+                row.c1 +
+                ").",
+            );
+            flagged[i] = true;
+          }
+          var key = pairKey(row);
+          if (seen[key] !== undefined) {
+            issues.push(
+              "Rows " +
+                (seen[key] + 1) +
+                " and " +
+                (i + 1) +
+                ": " +
+                row.c1 +
+                "–" +
+                row.c2 +
+                " is declared twice.",
+            );
+            flagged[i] = true;
+            flagged[seen[key]] = true;
+          } else {
+            seen[key] = i;
+          }
+          if (importanceOf(row.importance).missing) {
+            issues.push(
+              "Row " +
+                (i + 1) +
+                ': importance level "' +
+                row.importance +
+                '" no longer exists in the scale.',
+            );
+            flagged[i] = true;
+          }
+          if (!row.reasons || row.reasons.length === 0) {
+            issues.push(
+              "Row " +
+                (i + 1) +
+                ": " +
+                row.c1 +
+                "–" +
+                row.c2 +
+                " has no reason set.",
+            );
+            flagged[i] = true;
+          }
+        });
+
+        return { issues: issues, flagged: flagged };
+      }
+
+      function totals() {
+        var max = 0;
+        var vital = 0;
+        state.rows.forEach(function (row) {
+          var imp = importanceOf(row.importance);
+          if (imp.weight === null) vital += 1;
+          else max += imp.weight;
+        });
+        return { max: max, vital: vital, scored: state.rows.length - vital };
+      }
+
+      function commit() {
+        var t = totals();
+        document.getElementById("max-value").textContent = String(t.max);
+        document.getElementById("s-max").textContent = String(t.max);
+        document.getElementById("s-total").textContent = String(state.rows.length);
+        document.getElementById("s-scored").textContent = String(t.scored);
+        document.getElementById("s-vital").textContent = String(t.vital);
+
+        var found = findIssues();
+        var box = document.getElementById("issues");
+        while (box.firstChild) box.removeChild(box.firstChild);
+        if (found.issues.length) {
+          box.appendChild(
+            el("strong", {
+              text:
+                found.issues.length +
+                (found.issues.length === 1 ? " issue" : " issues") +
+                " to fix",
+            }),
+          );
+          found.issues.forEach(function (msg) {
+            box.appendChild(el("span", { text: msg }));
+          });
+          box.hidden = false;
+        } else {
+          box.hidden = true;
+        }
+
+        var bodyRows = document.getElementById("rows").children;
+        for (var i = 0; i < bodyRows.length; i++) {
+          bodyRows[i].className = found.flagged[i] ? "invalid" : "";
+        }
+
+        refreshUsage();
+        buildLayout();
+        if (document.getElementById("geo-rows").children.length) renderGeoTable();
+        save();
+      }
+
+      function render() {
+        var tbody = document.getElementById("rows");
+        while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+        state.rows.forEach(function (row, i) {
+          tbody.appendChild(renderRow(row, i));
+        });
+        commit();
+      }
+
+      /* ------------------------------------------------------------------
+         Legend panels
+         ------------------------------------------------------------------ */
+
+      function buildLegend() {
+        var colourBox = document.getElementById("legend-colour");
+        PROXIMITY.forEach(function (prox) {
+          var swatch = el("div");
+          drawStyle(swatch, "Very important", prox.name);
+          colourBox.appendChild(
+            el("div", { class: "legend-row" }, [
+              el("div", { class: "label" }, [
+                el("span", { text: prox.name }),
+                el("span", {
+                  class: "meta",
+                  text: prox.dashed ? "dotted" : "solid",
+                }),
+              ]),
+              swatch,
+            ]),
+          );
+        });
+
+        buildWidthLegend();
+      }
+
+      function buildWidthLegend() {
+        var widthBox = document.getElementById("legend-width");
+        while (widthBox.firstChild) widthBox.removeChild(widthBox.firstChild);
+        state.levels.forEach(function (imp) {
+          var swatch = el("div");
+          drawStyle(swatch, imp.name, "Adjacent");
+          widthBox.appendChild(
+            el("div", { class: "legend-row" }, [
+              el("div", { class: "label" }, [
+                el("span", { text: imp.name }),
+                el("span", {
+                  class: "meta",
+                  text:
+                    "w " +
+                    imp.width +
+                    " · " +
+                    (imp.weight === null ? "—" : imp.weight),
+                }),
+              ]),
+              swatch,
+            ]),
+          );
+        });
+      }
+
+      /* ------------------------------------------------------------------
+         Layout geometry
+
+         Traced from the course drawing at roughly 50 x 45 m; the block centroids
+         reproduce the B-D, B-C and C-D distances the course reports. Stations are
+         optional: a center may carry an input, an output, both or neither, and a
+         relationship that asks for a station a center does not have is reported
+         rather than guessed at.
+         ------------------------------------------------------------------ */
+
+      var GEO_KEY = "isye6202.proximity.geometry.v1";
+
+      var DEFAULT_BUILDING = { w: 50, h: 45 };
+
+      var DEFAULT_CENTERS = [
+        {
+          id: "A",
+          x: 0,
+          y: 0,
+          w: 12.5,
+          h: 5.5,
+          kind: "process",
+          I: { edge: "bottom", t: 0.3 },
+          O: { edge: "bottom", t: 0.65 },
+        },
+        {
+          id: "MP",
+          x: 14.5,
+          y: 0,
+          w: 35.5,
+          h: 5,
+          kind: "dock",
+          I: { edge: "top", t: 0.92 },
+          O: { edge: "bottom", t: 0.45 },
+        },
+        {
+          id: "B",
+          x: 0,
+          y: 6,
+          w: 4.5,
+          h: 14.5,
+          kind: "process",
+          I: { edge: "right", t: 0.15 },
+          O: { edge: "right", t: 0.5 },
+        },
+        {
+          id: "C",
+          x: 8.5,
+          y: 8.5,
+          w: 17,
+          h: 13.5,
+          kind: "process",
+          I: { edge: "top", t: 0.35 },
+          O: { edge: "top", t: 0.6 },
+        },
+        {
+          id: "D",
+          x: 26.5,
+          y: 8.5,
+          w: 5.5,
+          h: 13.5,
+          kind: "process",
+          I: { edge: "top", t: 0.5 },
+          O: { edge: "right", t: 0.55 },
+        },
+        {
+          id: "E",
+          x: 37.5,
+          y: 6,
+          w: 12.5,
+          h: 15,
+          kind: "process",
+          I: { edge: "left", t: 0.3 },
+          O: { edge: "left", t: 0.75 },
+        },
+        {
+          id: "G",
+          x: 0,
+          y: 22.5,
+          w: 4.5,
+          h: 22.5,
+          kind: "process",
+          I: { edge: "right", t: 0.2 },
+          O: { edge: "right", t: 0.6 },
+        },
+        {
+          id: "H",
+          x: 8.5,
+          y: 23,
+          w: 16,
+          h: 12.5,
+          kind: "process",
+          I: { edge: "top", t: 0.3 },
+          O: { edge: "bottom", t: 0.4 },
+        },
+        {
+          id: "I",
+          x: 26.5,
+          y: 23,
+          w: 6,
+          h: 12.5,
+          kind: "process",
+          I: { edge: "top", t: 0.4 },
+          O: { edge: "right", t: 0.5 },
+        },
+        {
+          id: "F",
+          x: 37.5,
+          y: 22.5,
+          w: 12.5,
+          h: 8,
+          kind: "process",
+          I: { edge: "left", t: 0.25 },
+          O: { edge: "left", t: 0.7 },
+        },
+        {
+          id: "PF",
+          x: 37.5,
+          y: 31.5,
+          w: 12.5,
+          h: 13,
+          kind: "dock",
+          I: { edge: "left", t: 0.25 },
+          O: { edge: "bottom", t: 0.5 },
+        },
+        {
+          id: "J",
+          x: 6,
+          y: 38.5,
+          w: 26,
+          h: 5.5,
+          kind: "process",
+          I: { edge: "top", t: 0.25 },
+          O: { edge: "top", t: 0.75 },
+        },
+      ];
+
+      var KINDS = ["process", "dock"];
+      var KIND_FILL = { process: "#f7f2a4", dock: "#b6e9f4" };
+      var EDGES = ["top", "right", "bottom", "left"];
+
+      function cloneGeometry() {
+        return {
+          building: { w: DEFAULT_BUILDING.w, h: DEFAULT_BUILDING.h },
+          centers: DEFAULT_CENTERS.map(function (c) {
+            return {
+              id: c.id,
+              x: c.x,
+              y: c.y,
+              w: c.w,
+              h: c.h,
+              kind: c.kind,
+              I: c.I ? { edge: c.I.edge, t: c.I.t } : null,
+              O: c.O ? { edge: c.O.edge, t: c.O.t } : null,
+            };
+          }),
+        };
+      }
+
+      function loadGeometry() {
+        try {
+          var raw = window.localStorage.getItem(GEO_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && parsed.building && Array.isArray(parsed.centers)) {
+              return parsed;
+            }
+          }
+        } catch (err) {
+          /* blocked storage — fall through to the traced layout */
+        }
+        return cloneGeometry();
+      }
+
+      /* Whether a station exists is decided by the relationship table, so every
+         center keeps a position for both of them, ready for the moment a
+         relationship starts using it. */
+      function normalizeStations(geo) {
+        geo.centers.forEach(function (c) {
+          if (!c.I) c.I = { edge: "top", t: 0.5 };
+          if (!c.O) c.O = { edge: "bottom", t: 0.5 };
+        });
+        return geo;
+      }
+
+      function saveGeometry() {
+        try {
+          window.localStorage.setItem(
+            GEO_KEY,
+            JSON.stringify({ building: state.building, centers: state.centers }),
+          );
+        } catch (err) {
+          /* the editor still works without a saved draft */
+        }
+      }
+
+      function centerById(id) {
+        for (var i = 0; i < state.centers.length; i++) {
+          if (state.centers[i].id === id) return state.centers[i];
+        }
+        return null;
+      }
+
+      /* A station's point on its center's wall, plus the outward normal. */
+      function stationAt(c, station) {
+        if (!station) return null;
+        if (station.edge === "top")
+          return { x: c.x + station.t * c.w, y: c.y, nx: 0, ny: -1 };
+        if (station.edge === "bottom")
+          return { x: c.x + station.t * c.w, y: c.y + c.h, nx: 0, ny: 1 };
+        if (station.edge === "left")
+          return { x: c.x, y: c.y + station.t * c.h, nx: -1, ny: 0 };
+        return { x: c.x + c.w, y: c.y + station.t * c.h, nx: 1, ny: 0 };
+      }
+
+      function snapTo(value) {
+        var step = state.snap > 0 ? state.snap : 0.5;
+        return Math.round(value / step) * step;
+      }
+
+      function projectToWall(c, px, py) {
+        var options = [
+          { edge: "top", t: (px - c.x) / c.w, d: Math.abs(py - c.y) },
+          { edge: "bottom", t: (px - c.x) / c.w, d: Math.abs(py - (c.y + c.h)) },
+          { edge: "left", t: (py - c.y) / c.h, d: Math.abs(px - c.x) },
+          { edge: "right", t: (py - c.y) / c.h, d: Math.abs(px - (c.x + c.w)) },
+        ];
+        options.sort(function (a, b) {
+          return a.d - b.d;
+        });
+        var best = options[0];
+        var t = Math.max(0.04, Math.min(0.96, best.t));
+        return { edge: best.edge, t: Math.round(t * 100) / 100 };
+      }
+
+      /* A station is only drawn when some I/O relationship references it: the
+         upstream center's O and the downstream center's I. Its position is kept
+         either way, so it comes back where it was left. */
+      function stationUsage() {
+        var used = {};
+        state.rows.forEach(function (row) {
+          if (row.between !== "I/O") return;
+          used[row.c1 + ":O"] = true;
+          used[row.c2 + ":I"] = true;
+        });
+        return used;
+      }
+
+      /* The station triangle's height. Shared so the relationship line always
+         lands exactly on the mark: an output triangle points outward, so the line
+         leaves from its tip; an input triangle points inward, so the line arrives
+         at its base, on the wall. */
+      var TRI = 1.5;
+
+      function centroidOf(c) {
+        return { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+      }
+
+      /* Closest points between two axis-aligned centers. When they touch, the
+         contact is a segment rather than a point, and the relationship is drawn
+         as a bar along it — which is how the course draws every Adjacent pair. */
+      function boundaryLink(a, b) {
+        var ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+        var oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+        var gapX = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0);
+        var gapY = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0);
+
+        if (gapX <= 0.001 && oy > 0) {
+          /* side by side, walls touching: a vertical contact segment */
+          var cx = a.x > b.x ? a.x : a.x + a.w;
+          var y1 = Math.max(a.y, b.y),
+            y2 = Math.min(a.y + a.h, b.y + b.h);
+          return { p: { x: cx, y: y1 }, q: { x: cx, y: y2 }, bar: true };
+        }
+        if (gapY <= 0.001 && ox > 0) {
+          var cy = a.y > b.y ? a.y : a.y + a.h;
+          var x1 = Math.max(a.x, b.x),
+            x2 = Math.min(a.x + a.w, b.x + b.w);
+          return { p: { x: x1, y: cy }, q: { x: x2, y: cy }, bar: true };
+        }
+
+        var px = Math.min(Math.max(centroidOf(b).x, a.x), a.x + a.w);
+        var py = Math.min(Math.max(centroidOf(b).y, a.y), a.y + a.h);
+        var qx = Math.min(Math.max(centroidOf(a).x, b.x), b.x + b.w);
+        var qy = Math.min(Math.max(centroidOf(a).y, b.y), b.y + b.h);
+        return { p: { x: px, y: py }, q: { x: qx, y: qy }, bar: false };
+      }
+
+      /* OUT is not a center: it is everything beyond the building wall, so a
+         relationship to it is measured against the nearest wall. */
+      function outLink(c) {
+        var B = state.building;
+        var options = [
+          { gap: c.x, wall: "left" },
+          { gap: B.w - (c.x + c.w), wall: "right" },
+          { gap: c.y, wall: "top" },
+          { gap: B.h - (c.y + c.h), wall: "bottom" },
+        ];
+        options.sort(function (m, n) {
+          return m.gap - n.gap;
+        });
+        var best = options[0];
+        if (best.wall === "left")
+          return {
+            p: { x: c.x, y: c.y },
+            q: { x: 0, y: c.y + c.h },
+            bar: best.gap <= 0.001,
+            line: {
+              p: { x: c.x, y: c.y + c.h / 2 },
+              q: { x: 0, y: c.y + c.h / 2 },
+            },
+          };
+        if (best.wall === "right")
+          return {
+            p: { x: c.x + c.w, y: c.y },
+            q: { x: B.w, y: c.y + c.h },
+            bar: best.gap <= 0.001,
+            line: {
+              p: { x: c.x + c.w, y: c.y + c.h / 2 },
+              q: { x: B.w, y: c.y + c.h / 2 },
+            },
+          };
+        if (best.wall === "top")
+          return {
+            p: { x: c.x, y: c.y },
+            q: { x: c.x + c.w, y: 0 },
+            bar: best.gap <= 0.001,
+            line: {
+              p: { x: c.x + c.w / 2, y: c.y },
+              q: { x: c.x + c.w / 2, y: 0 },
+            },
+          };
+        return {
+          p: { x: c.x, y: c.y + c.h },
+          q: { x: c.x + c.w, y: B.h },
+          bar: best.gap <= 0.001,
+          line: {
+            p: { x: c.x + c.w / 2, y: c.y + c.h },
+            q: { x: c.x + c.w / 2, y: B.h },
+          },
+        };
+      }
+
+      function drawRelationships(svg) {
+        var layer = svgEl("g", { "pointer-events": "none" });
+
+        state.rows.forEach(function (row) {
+          var prox = proximityOf(row.proximity);
+          var imp = importanceOf(row.importance);
+          var constraint = imp.weight === null;
+          var stroke = imp.width || 2;
+
+          var a = centerById(row.c1);
+          var b = centerById(row.c2);
+          var from = null,
+            to = null,
+            isBar = false;
+
+          if (row.c2 === "OUT" || row.c1 === "OUT") {
+            var inner = row.c1 === "OUT" ? b : a;
+            if (!inner) return;
+            var link = outLink(inner);
+            if (link.bar) {
+              from = link.p;
+              to = link.q;
+              isBar = true;
+              /* a contact bar runs along the wall, not across it */
+              if (link.p.x === link.q.x || link.p.y === link.q.y) {
+                from = link.p;
+                to = link.q;
+              }
+            } else {
+              from = link.line.p;
+              to = link.line.q;
+            }
+          } else if (!a || !b) {
+            return;
+          } else if (row.between === "Centroid") {
+            from = centroidOf(a);
+            to = centroidOf(b);
+          } else if (row.between === "Boundaries") {
+            var bl = boundaryLink(a, b);
+            from = bl.p;
+            to = bl.q;
+            isBar = bl.bar;
+          } else {
+            if (!a.O || !b.I) return;
+            var so = stationAt(a, a.O),
+              si = stationAt(b, b.I);
+            from = { x: so.x + so.nx * TRI, y: so.y + so.ny * TRI };
+            to = { x: si.x, y: si.y };
+          }
+
+          var node;
+          if (row.between === "I/O" && !isBar) {
+            var mx = (from.x + to.x) / 2,
+              my = (from.y + to.y) / 2;
+            var dx = to.x - from.x,
+              dy = to.y - from.y;
+            var len = Math.hypot(dx, dy) || 1;
+            var bow = Math.min(len * 0.16, 6);
+            node = svgEl("path", {
+              d:
+                "M " +
+                from.x +
+                " " +
+                from.y +
+                " Q " +
+                (mx - (dy / len) * bow) +
+                " " +
+                (my + (dx / len) * bow) +
+                " " +
+                to.x +
+                " " +
+                to.y,
+              fill: "none",
+            });
+          } else {
+            node = svgEl("line", {
+              x1: from.x,
+              y1: from.y,
+              x2: to.x,
+              y2: to.y,
+            });
+          }
+          node.setAttribute("stroke", prox.colour);
+          node.setAttribute("stroke-width", stroke);
+          node.setAttribute("stroke-linecap", isBar ? "butt" : "round");
+          node.setAttribute("vector-effect", "non-scaling-stroke");
+          if (prox.dashed)
+            node.setAttribute("stroke-dasharray", stroke * 1.6 + " " + stroke);
+          layer.appendChild(node);
+
+          if (constraint) {
+            var cx = (from.x + to.x) / 2,
+              cy = (from.y + to.y) / 2;
+            var arm = 0.8;
+            [
+              [-1, -1, 1, 1],
+              [-1, 1, 1, -1],
+            ].forEach(function (v) {
+              var x = svgEl("line", {
+                x1: cx + v[0] * arm,
+                y1: cy + v[1] * arm,
+                x2: cx + v[2] * arm,
+                y2: cy + v[3] * arm,
+                stroke: "#ffffff",
+                "stroke-width": 2.2,
+                "stroke-linecap": "round",
+                "vector-effect": "non-scaling-stroke",
+              });
+              layer.appendChild(x);
+            });
+          }
+        });
+
+        svg.appendChild(layer);
+        return layer;
+      }
+
+      var GEO_PAD = 4;
+
+      function buildLayout() {
+        var used = stationUsage();
+        var host = document.getElementById("layout");
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        var B = state.building;
+        var svg = svgEl("svg", {
+          viewBox:
+            -GEO_PAD +
+            " " +
+            -GEO_PAD +
+            " " +
+            (B.w + GEO_PAD * 2) +
+            " " +
+            (B.h + GEO_PAD * 2),
+          role: "img",
+          "aria-label":
+            "Layout geometry: drag centers and stations to reposition them",
+        });
+
+        svg.appendChild(
+          svgEl("rect", {
+            x: -GEO_PAD,
+            y: -GEO_PAD,
+            width: B.w + GEO_PAD * 2,
+            height: B.h + GEO_PAD * 2,
+            fill: PAPER_BG,
+          }),
+        );
+        svg.appendChild(
+          svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: B.w,
+            height: B.h,
+            fill: "#ffffff",
+            stroke: PAPER_INK,
+            "stroke-width": 2,
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+
+        /* The relationship lines are anchored to blocks and stations, so they are
+           rebuilt on every drag frame rather than only when the drag ends. */
+        var lineLayer = null;
+
+        function refreshLines() {
+          if (lineLayer && lineLayer.parentNode)
+            lineLayer.parentNode.removeChild(lineLayer);
+          lineLayer = state.showLines ? drawRelationships(svg) : null;
+        }
+
+        function toLocal(event) {
+          var pt = svg.createSVGPoint();
+          pt.x = event.clientX;
+          pt.y = event.clientY;
+          var ctm = svg.getScreenCTM();
+          if (!ctm) return { x: 0, y: 0 };
+          var local = pt.matrixTransform(ctm.inverse());
+          return { x: local.x, y: local.y };
+        }
+
+        function beginDrag(node, onMove) {
+          node.addEventListener("pointerdown", function (event) {
+            event.preventDefault();
+            node.setPointerCapture(event.pointerId);
+            var start = toLocal(event);
+            var moved = function (ev) {
+              var now = toLocal(ev);
+              onMove(now, start);
+            };
+            var done = function () {
+              node.removeEventListener("pointermove", moved);
+              node.removeEventListener("pointerup", done);
+              node.removeEventListener("pointercancel", done);
+              renderGeoTable();
+              saveGeometry();
+            };
+            node.addEventListener("pointermove", moved);
+            node.addEventListener("pointerup", done);
+            node.addEventListener("pointercancel", done);
+          });
+        }
+
+        state.centers.forEach(function (c) {
+          var group = svgEl("g", {});
+
+          var rect = svgEl("rect", {
+            class: "block",
+            x: c.x,
+            y: c.y,
+            width: c.w,
+            height: c.h,
+            fill: KIND_FILL[c.kind] || KIND_FILL.process,
+            stroke: PAPER_INK,
+            "stroke-width": 1.5,
+            "vector-effect": "non-scaling-stroke",
+          });
+          group.appendChild(rect);
+
+          var label = svgEl("text", {
+            x: c.x + 1.2,
+            y: c.y + 3.4,
+            fill: PAPER_INK,
+            "font-size": 2.8,
+            "font-weight": 700,
+          });
+          label.textContent = c.id;
+          label.setAttribute("pointer-events", "none");
+          group.appendChild(label);
+
+          var grabX = 0,
+            grabY = 0;
+          rect.addEventListener("pointerdown", function (event) {
+            var local = toLocal(event);
+            grabX = local.x - c.x;
+            grabY = local.y - c.y;
+          });
+          beginDrag(rect, function (now) {
+            c.x = Math.max(
+              0,
+              Math.min(state.building.w - c.w, snapTo(now.x - grabX)),
+            );
+            c.y = Math.max(
+              0,
+              Math.min(state.building.h - c.h, snapTo(now.y - grabY)),
+            );
+            rect.setAttribute("x", c.x);
+            rect.setAttribute("y", c.y);
+            label.setAttribute("x", c.x + 1.2);
+            label.setAttribute("y", c.y + 3.4);
+            placeStations();
+            handle.setAttribute("x", c.x + c.w - 1.3);
+            handle.setAttribute("y", c.y + c.h - 1.3);
+            refreshLines();
+            flagOverlaps();
+          });
+
+          var handle = svgEl("rect", {
+            class: "handle",
+            x: c.x + c.w - 1.3,
+            y: c.y + c.h - 1.3,
+            width: 1.3,
+            height: 1.3,
+            fill: "#0c5c9e",
+            stroke: "#ffffff",
+            "stroke-width": 1,
+            "vector-effect": "non-scaling-stroke",
+          });
+          beginDrag(handle, function (now) {
+            c.w = Math.max(
+              2,
+              Math.min(state.building.w - c.x, snapTo(now.x - c.x)),
+            );
+            c.h = Math.max(
+              2,
+              Math.min(state.building.h - c.y, snapTo(now.y - c.y)),
+            );
+            rect.setAttribute("width", c.w);
+            rect.setAttribute("height", c.h);
+            handle.setAttribute("x", c.x + c.w - 1.3);
+            handle.setAttribute("y", c.y + c.h - 1.3);
+            placeStations();
+            refreshLines();
+            flagOverlaps();
+          });
+
+          var marks = {};
+
+          function placeStations() {
+            ["I", "O"].forEach(function (role) {
+              var mark = marks[role];
+              if (!mark) return;
+              var at = stationAt(c, c[role]);
+              var size = TRI;
+              var dx = role === "I" ? -at.nx : at.nx;
+              var dy = role === "I" ? -at.ny : at.ny;
+              var px = -dy,
+                py = dx;
+              var apex = [at.x + dx * size, at.y + dy * size];
+              var b1 = [at.x + px * size * 0.62, at.y + py * size * 0.62];
+              var b2 = [at.x - px * size * 0.62, at.y - py * size * 0.62];
+              mark.setAttribute(
+                "points",
+                apex.join(",") + " " + b1.join(",") + " " + b2.join(","),
+              );
+            });
+          }
+
+          ["I", "O"].forEach(function (role) {
+            if (!c[role] || !used[c.id + ":" + role]) return;
+            var mark = svgEl("polygon", {
+              class: "station",
+              fill: role === "O" ? PAPER_INK : "#ffffff",
+              stroke: PAPER_INK,
+              "stroke-width": 1.5,
+              "vector-effect": "non-scaling-stroke",
+            });
+            mark.appendChild(svgEl("title", {}));
+            mark.firstChild.textContent =
+              c.id + " " + (role === "I" ? "input" : "output") + " station";
+            marks[role] = mark;
+            group.appendChild(mark);
+            beginDrag(mark, function (now) {
+              var placed = projectToWall(c, now.x, now.y);
+              c[role].edge = placed.edge;
+              c[role].t = placed.t;
+              placeStations();
+              refreshLines();
+            });
+          });
+
+          placeStations();
+          group.appendChild(handle);
+          svg.appendChild(group);
+        });
+
+        refreshLines();
+        host.appendChild(svg);
+        flagOverlaps();
+      }
+
+      function flagOverlaps() {
+        var problems = [];
+        for (var i = 0; i < state.centers.length; i++) {
+          for (var j = i + 1; j < state.centers.length; j++) {
+            var a = state.centers[i],
+              b = state.centers[j];
+            var hit =
+              a.x < b.x + b.w &&
+              b.x < a.x + a.w &&
+              a.y < b.y + b.h &&
+              b.y < a.y + a.h;
+            if (hit) problems.push(a.id + " and " + b.id + " overlap.");
+          }
+        }
+        var box = document.getElementById("geo-issues");
+        while (box.firstChild) box.removeChild(box.firstChild);
+        if (problems.length) {
+          box.appendChild(
+            el("strong", {
+              text:
+                problems.length + (problems.length === 1 ? " issue" : " issues"),
+            }),
+          );
+          problems.forEach(function (msg) {
+            box.appendChild(el("span", { text: msg }));
+          });
+          box.hidden = false;
+        } else {
+          box.hidden = true;
+        }
+      }
+
+      function renderGeoTable() {
+        var tbody = document.getElementById("geo-rows");
+        while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+        state.centers.forEach(function (c) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "pairname curvename", text: c.id }));
+
+          tr.appendChild(
+            el("td", {}, [
+              makeSelect(KINDS, c.kind, "kind-" + c.id, "", function (v) {
+                c.kind = v;
+                buildLayout();
+                saveGeometry();
+              }),
+            ]),
+          );
+
+          ["x", "y", "w", "h"].forEach(function (key) {
+            var input = el("input", {
+              class: "f num",
+              type: "number",
+              step: "0.5",
+              min: "0",
+            });
+            input.value = String(c[key]);
+            input.setAttribute("aria-label", c.id + " " + key);
+            input.addEventListener("input", function () {
+              var value = parseFloat(input.value);
+              if (isNaN(value)) return;
+              c[key] = value;
+              buildLayout();
+              saveGeometry();
+            });
+            tr.appendChild(el("td", {}, [input]));
+          });
+
+          var used = stationUsage();
+          ["I", "O"].forEach(function (role) {
+            var cell = el("td", { class: "station-cell" });
+            if (!used[c.id + ":" + role]) {
+              cell.appendChild(
+                el("div", {
+                  class: "unused",
+                  text: "not used by any relationship",
+                }),
+              );
+              tr.appendChild(cell);
+              return;
+            }
+            var edge = makeSelect(
+              EDGES,
+              c[role].edge,
+              role + "-edge-" + c.id,
+              "",
+              function (v) {
+                c[role].edge = v;
+                buildLayout();
+                saveGeometry();
+              },
+            );
+            var pos = el("input", {
+              class: "f num",
+              type: "number",
+              step: "0.05",
+              min: "0",
+              max: "1",
+            });
+            pos.value = String(c[role].t);
+            pos.setAttribute("aria-label", c.id + " " + role + " position");
+            pos.addEventListener("input", function () {
+              var value = parseFloat(pos.value);
+              if (isNaN(value)) return;
+              c[role].t = Math.max(0, Math.min(1, value));
+              buildLayout();
+              saveGeometry();
+            });
+            cell.appendChild(
+              el("div", { class: "params station-pair" }, [edge, pos]),
+            );
+            tr.appendChild(cell);
+          });
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      document
+        .getElementById("show-lines")
+        .addEventListener("change", function (event) {
+          state.showLines = event.target.checked;
+          buildLayout();
+        });
+
+      document.getElementById("reset-geo").addEventListener("click", function () {
+        var fresh = cloneGeometry();
+        state.building = fresh.building;
+        state.centers = fresh.centers;
+        buildLayout();
+        renderGeoTable();
+        saveGeometry();
+      });
+
+      /* ------------------------------------------------------------------
+         Satisfaction curves
+
+         Each desired proximity is a ramp between two distances: one where
+         satisfaction reaches 1 and one where it reaches 0. Adjacent through
+         Not far have at1 < at0 and fall; Far and Very far have at1 > at0 and
+         rise. "shape" bends the ramp between them.
+         ------------------------------------------------------------------ */
+
+      var CURVE_KEY = "isye6202.proximity.curves.v1";
+
+      var DEFAULT_CURVES = {
+        Adjacent: { at1: 2, at0: 6, k: 1 },
+        "Very near": { at1: 4, at0: 10.5, k: 1 },
+        Near: { at1: 6, at0: 14.5, k: 1 },
+        "Not far": { at1: 8, at0: 16.5, k: 1 },
+        Far: { at1: 21, at0: 10.5, k: 1 },
+        "Very far": { at1: 30, at0: 18.5, k: 1 },
+        "Not too far, not too near": { bell: true, peak: 12, half: 4.5 },
+      };
+
+      /* Distance/satisfaction pairs the course reports for Layout 0, minus the
+         Vital rows, which are judged feasible rather than scored. */
+      var COURSE_POINTS = [
+        { prox: "Adjacent", d: 0, s: 1 },
+        { prox: "Near", d: 10, s: 0.4 },
+        { prox: "Near", d: 12, s: 0.1 },
+        { prox: "Near", d: 22, s: 0 },
+        { prox: "Near", d: 24, s: 0 },
+        { prox: "Near", d: 28, s: 0 },
+        { prox: "Near", d: 30, s: 0 },
+        { prox: "Not far", d: 4, s: 1 },
+        { prox: "Not far", d: 13, s: 0.4 },
+        { prox: "Not far", d: 16, s: 0 },
+        { prox: "Not far", d: 29, s: 0 },
+        { prox: "Very near", d: 24, s: 0 },
+        { prox: "Very far", d: 17, s: 0 },
+      ];
+
+      function cloneCurves(source) {
+        var out = {};
+        Object.keys(source).forEach(function (name) {
+          var c = source[name];
+          out[name] = c.bell
+            ? { bell: true, peak: c.peak, half: c.half }
+            : { at1: c.at1, at0: c.at0, k: c.k };
+        });
+        return out;
+      }
+
+      function loadCurves() {
+        try {
+          var raw = window.localStorage.getItem(CURVE_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+              var merged = cloneCurves(DEFAULT_CURVES);
+              Object.keys(parsed).forEach(function (name) {
+                if (merged[name]) merged[name] = parsed[name];
+              });
+              return merged;
+            }
+          }
+        } catch (err) {
+          /* blocked storage — fall through to the defaults */
+        }
+        return cloneCurves(DEFAULT_CURVES);
+      }
+
+      function saveCurves() {
+        try {
+          window.localStorage.setItem(CURVE_KEY, JSON.stringify(state.curves));
+        } catch (err) {
+          /* the curves still work without a saved draft */
+        }
+      }
+
+      function satisfaction(proximityName, distance) {
+        var c = state.curves[proximityName];
+        if (!c) return 0;
+        if (c.bell) {
+          /* Gaussian: 1 at the ideal distance, 0.5 one half-width either side. */
+          var sigma = (c.half || 1) / 1.17741;
+          var offset = distance - c.peak;
+          return Math.exp(-(offset * offset) / (2 * sigma * sigma));
+        }
+        var span = c.at1 - c.at0;
+        if (span === 0) return distance >= c.at1 ? 1 : 0;
+        var t = (distance - c.at0) / span;
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        return Math.pow(t, c.k);
+      }
+
+      var SVG_W = 880;
+      var SVG_H = 430;
+      var PAD = { top: 14, right: 22, bottom: 46, left: 54 };
+      var PLOT_W = SVG_W - PAD.left - PAD.right;
+      var PLOT_H = SVG_H - PAD.top - PAD.bottom;
+      var PAPER_INK = "#101820";
+      var PAPER_MUTED = "#5d6b78";
+      var PAPER_GRID = "#e4e6e0";
+      var PAPER_BG = "#fcfcfa";
+
+      function svgEl(tag, attrs) {
+        var node = document.createElementNS(SVG_NS, tag);
+        Object.keys(attrs || {}).forEach(function (k) {
+          node.setAttribute(k, String(attrs[k]));
+        });
+        return node;
+      }
+
+      function niceStep(rawMax) {
+        var candidates = [1, 2, 2.5, 5, 10, 20, 25, 50, 100];
+        for (var i = 0; i < candidates.length; i++) {
+          if (rawMax / candidates[i] <= 16) return candidates[i];
+        }
+        return 100;
+      }
+
+      function buildChart() {
+        var host = document.getElementById("chart");
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        var max = state.axisMax;
+        var xOf = function (d) {
+          return PAD.left + (d / max) * PLOT_W;
+        };
+        var yOf = function (v) {
+          return PAD.top + (1 - v) * PLOT_H;
+        };
+
+        var svg = svgEl("svg", {
+          viewBox: "0 0 " + SVG_W + " " + SVG_H,
+          role: "img",
+          "aria-label":
+            "Satisfaction as a function of distance, one curve per desired proximity",
+        });
+
+        svg.appendChild(
+          svgEl("rect", {
+            x: PAD.left,
+            y: PAD.top,
+            width: PLOT_W,
+            height: PLOT_H,
+            fill: PAPER_BG,
+            stroke: "none",
+          }),
+        );
+
+        /* grid + axes */
+        var yStep = 0.1;
+        for (var v = 0; v <= 1.0001; v += yStep) {
+          var yy = yOf(v);
+          svg.appendChild(
+            svgEl("line", {
+              x1: PAD.left,
+              y1: yy,
+              x2: PAD.left + PLOT_W,
+              y2: yy,
+              stroke: PAPER_GRID,
+              "stroke-width": 1,
+            }),
+          );
+          var yLabel = svgEl("text", {
+            x: PAD.left - 9,
+            y: yy + 4,
+            fill: PAPER_MUTED,
+            "font-size": 11,
+            "text-anchor": "end",
+          });
+          yLabel.textContent = v === 0 || v === 1 ? String(v) : v.toFixed(1);
+          svg.appendChild(yLabel);
+        }
+
+        var xStep = niceStep(max);
+        for (var d = 0; d <= max + 0.0001; d += xStep) {
+          var xx = xOf(d);
+          svg.appendChild(
+            svgEl("line", {
+              x1: xx,
+              y1: PAD.top,
+              x2: xx,
+              y2: PAD.top + PLOT_H,
+              stroke: PAPER_GRID,
+              "stroke-width": 1,
+            }),
+          );
+          var xLabel = svgEl("text", {
+            x: xx,
+            y: PAD.top + PLOT_H + 18,
+            fill: PAPER_MUTED,
+            "font-size": 11,
+            "text-anchor": "middle",
+          });
+          xLabel.textContent = String(Math.round(d * 10) / 10);
+          svg.appendChild(xLabel);
+        }
+
+        svg.appendChild(
+          svgEl("rect", {
+            x: PAD.left,
+            y: PAD.top,
+            width: PLOT_W,
+            height: PLOT_H,
+            fill: "none",
+            stroke: "#b9bfb4",
+            "stroke-width": 1,
+          }),
+        );
+
+        var axisTitle = svgEl("text", {
+          x: PAD.left + PLOT_W / 2,
+          y: SVG_H - 10,
+          fill: PAPER_INK,
+          "font-size": 12,
+          "font-weight": 600,
+          "text-anchor": "middle",
+        });
+        axisTitle.textContent = "Distance (meters)";
+        svg.appendChild(axisTitle);
+
+        var yTitle = svgEl("text", {
+          x: -(PAD.top + PLOT_H / 2),
+          y: 15,
+          fill: PAPER_INK,
+          "font-size": 12,
+          "font-weight": 600,
+          "text-anchor": "middle",
+          transform: "rotate(-90)",
+        });
+        yTitle.textContent = "Satisfaction";
+        svg.appendChild(yTitle);
+
+        /* course reference points, under the curves */
+        COURSE_POINTS.forEach(function (pt) {
+          if (pt.d > max) return;
+          svg.appendChild(
+            svgEl("circle", {
+              cx: xOf(pt.d),
+              cy: yOf(pt.s),
+              r: 4,
+              fill: proximityOf(pt.prox).colour,
+              stroke: PAPER_BG,
+              "stroke-width": 2,
+            }),
+          );
+        });
+
+        /* one path per proximity, sampled finely enough to show the bend */
+        var samples = 240;
+        PROXIMITY.forEach(function (prox, index) {
+          var points = [];
+          for (var i = 0; i <= samples; i++) {
+            var dist = (i / samples) * max;
+            points.push(
+              xOf(dist).toFixed(2) +
+                "," +
+                yOf(satisfaction(prox.name, dist)).toFixed(2),
+            );
+          }
+          var path = svgEl("polyline", {
+            points: points.join(" "),
+            fill: "none",
+            stroke: prox.colour,
+            "stroke-width": 2.5,
+            "stroke-linejoin": "round",
+            "stroke-linecap": "round",
+          });
+          if (prox.dashed) path.setAttribute("stroke-dasharray", "7 5");
+          svg.appendChild(path);
+
+          /* Direct label at the half-satisfaction crossing. The course palette
+             fails CVD separation between the greens and oranges, so identity
+             cannot rest on colour alone. */
+          var c = state.curves[prox.name];
+          var at;
+          var labelY;
+          if (c.bell) {
+            at = c.peak;
+            labelY = yOf(1) + 16;
+          } else {
+            var t = Math.pow(0.5, 1 / (c.k || 1));
+            at = c.at0 + t * (c.at1 - c.at0);
+            labelY = yOf(0.5) + (index % 2 === 0 ? -11 : 19);
+          }
+          if (at >= 0 && at <= max) {
+            var label = svgEl("text", {
+              x: xOf(at),
+              y: labelY,
+              fill: PAPER_INK,
+              "font-size": 11.5,
+              "font-weight": 600,
+              "text-anchor": "middle",
+              stroke: PAPER_BG,
+              "stroke-width": 3.5,
+              "paint-order": "stroke",
+            });
+            label.textContent = prox.name;
+            svg.appendChild(label);
+          }
+        });
+
+        /* hover crosshair */
+        var crosshair = svgEl("line", {
+          y1: PAD.top,
+          y2: PAD.top + PLOT_H,
+          stroke: PAPER_INK,
+          "stroke-width": 1,
+          "stroke-dasharray": "3 3",
+          opacity: 0,
+        });
+        svg.appendChild(crosshair);
+
+        var hit = svgEl("rect", {
+          x: PAD.left,
+          y: PAD.top,
+          width: PLOT_W,
+          height: PLOT_H,
+          fill: "transparent",
+        });
+        svg.appendChild(hit);
+
+        var paper = document.getElementById("chart-paper");
+        var tip = document.getElementById("curve-tip");
+        if (!tip) {
+          tip = el("div", { class: "tip", id: "curve-tip" });
+          tip.hidden = true;
+          paper.appendChild(tip);
+        }
+
+        function showAt(clientX, clientY) {
+          var box = svg.getBoundingClientRect();
+          var scale = SVG_W / box.width;
+          var svgX = (clientX - box.left) * scale;
+          var dist = ((svgX - PAD.left) / PLOT_W) * max;
+          if (dist < 0) dist = 0;
+          if (dist > max) dist = max;
+
+          crosshair.setAttribute("x1", xOf(dist));
+          crosshair.setAttribute("x2", xOf(dist));
+          crosshair.setAttribute("opacity", "0.55");
+
+          while (tip.firstChild) tip.removeChild(tip.firstChild);
+          tip.appendChild(
+            el("div", {
+              class: "tip-head",
+              text: (Math.round(dist * 10) / 10).toFixed(1) + " m",
+            }),
+          );
+          PROXIMITY.forEach(function (prox) {
+            tip.appendChild(
+              el("div", { class: "tip-row" }, [
+                el("span", { text: prox.name }),
+                el("span", {
+                  class: "v",
+                  text: satisfaction(prox.name, dist).toFixed(2),
+                }),
+              ]),
+            );
+          });
+
+          tip.hidden = false;
+          var paperBox = paper.getBoundingClientRect();
+          var left = clientX - paperBox.left + 14;
+          if (left + tip.offsetWidth > paperBox.width - 6) {
+            left = clientX - paperBox.left - tip.offsetWidth - 14;
+          }
+          tip.style.left = Math.max(6, left) + "px";
+          tip.style.top =
+            Math.max(6, clientY - paperBox.top - tip.offsetHeight / 2) + "px";
+        }
+
+        hit.addEventListener("mousemove", function (event) {
+          showAt(event.clientX, event.clientY);
+        });
+        hit.addEventListener("mouseleave", function () {
+          crosshair.setAttribute("opacity", "0");
+          tip.hidden = true;
+        });
+        hit.addEventListener("touchmove", function (event) {
+          var touch = event.touches[0];
+          if (touch) showAt(touch.clientX, touch.clientY);
+        });
+        hit.addEventListener("touchend", function () {
+          crosshair.setAttribute("opacity", "0");
+          tip.hidden = true;
+        });
+
+        host.appendChild(svg);
+        document.getElementById("axis-label").textContent = String(max);
+      }
+
+      function buildCurveLegend() {
+        var box = document.getElementById("curve-legend");
+        while (box.firstChild) box.removeChild(box.firstChild);
+        PROXIMITY.forEach(function (prox) {
+          var mark = document.createElementNS(SVG_NS, "svg");
+          mark.setAttribute("viewBox", "0 0 26 10");
+          var seg = svgEl("line", {
+            x1: 1,
+            y1: 5,
+            x2: 25,
+            y2: 5,
+            stroke: prox.colour,
+            "stroke-width": 2.5,
+            "stroke-linecap": "round",
+          });
+          if (prox.dashed) seg.setAttribute("stroke-dasharray", "6 4");
+          mark.appendChild(seg);
+          box.appendChild(el("span", {}, [mark, el("span", { text: prox.name })]));
+        });
+      }
+
+      function renderCurveTable() {
+        var tbody = document.getElementById("curve-rows");
+        while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+        PROXIMITY.forEach(function (prox) {
+          var c = state.curves[prox.name];
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "curvename", text: prox.name }));
+
+          function numberField(label, key, step, min) {
+            var input = el("input", {
+              class: "f num",
+              type: "number",
+              step: String(step),
+              min: String(min),
+            });
+            input.value = String(c[key]);
+            input.setAttribute("aria-label", prox.name + ", " + label);
+            input.addEventListener("input", function () {
+              var value = parseFloat(input.value);
+              if (isNaN(value)) return;
+              c[key] = value;
+              buildChart();
+              saveCurves();
+            });
+            return el("label", { class: "minifield" }, [
+              el("span", { text: label }),
+              input,
+            ]);
+          }
+
+          tr.appendChild(
+            el("td", { class: "form" }, [
+              el("span", { text: c.bell ? "Bell" : "Ramp" }),
+            ]),
+          );
+
+          var params = c.bell
+            ? [
+                numberField("ideal", "peak", 0.5, 0),
+                numberField("half-width", "half", 0.5, 0.5),
+              ]
+            : [
+                numberField("1 at", "at1", 0.5, 0),
+                numberField("0 at", "at0", 0.5, 0),
+                numberField("bend", "k", 0.1, 0.1),
+              ];
+          tr.appendChild(el("td", {}, [el("div", { class: "params" }, params)]));
+
+          var swatch = el("td", { class: "preview" });
+          drawStyle(swatch, "Very important", prox.name);
+          tr.appendChild(swatch);
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      document
+        .getElementById("reset-curves")
+        .addEventListener("click", function () {
+          state.curves = cloneCurves(DEFAULT_CURVES);
+          state.axisMax = 30;
+          renderCurveTable();
+          buildChart();
+          saveCurves();
+        });
+
+      /* ------------------------------------------------------------------
+         Importance scale editor
+         ------------------------------------------------------------------ */
+
+      var usageCells = [];
+
+      function refreshUsage() {
+        usageCells.forEach(function (entry) {
+          var used = usageOf(entry.name);
+          entry.cell.textContent =
+            used === 0 ? "\u2014" : used + (used === 1 ? " row" : " rows");
+        });
+      }
+
+      function usageOf(name) {
+        var n = 0;
+        state.rows.forEach(function (row) {
+          if (row.importance === name) n += 1;
+        });
+        return n;
+      }
+
+      function scaleMessage(text, kind) {
+        var target = document.getElementById("scale-msg");
+        target.textContent = text || "";
+        target.className = "scale-msg" + (kind ? " " + kind : "");
+      }
+
+      /* Constraints first, then heaviest weight down. Re-sorted only when an
+         edit is committed, so the list does not jump while someone types. */
+      function sortLevels() {
+        state.levels.sort(function (a, b) {
+          if (a.weight === null && b.weight === null) return 0;
+          if (a.weight === null) return -1;
+          if (b.weight === null) return 1;
+          return b.weight - a.weight;
+        });
+      }
+
+      /* A scale edit changes the dropdowns, the weights column, the totals and
+         the width legend, so everything downstream is rebuilt together. */
+      function applyScale() {
+        render();
+        buildWidthLegend();
+      }
+
+      function renderScale() {
+        var tbody = document.getElementById("scale-rows");
+        while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+        usageCells = [];
+
+        state.levels.forEach(function (level) {
+          var tr = el("tr");
+
+          var nameInput = el("input", {
+            class: "f",
+            type: "text",
+            maxlength: "40",
+          });
+          nameInput.value = level.name;
+          nameInput.setAttribute("aria-label", "Level name");
+          nameInput.addEventListener("change", function () {
+            var next = nameInput.value.trim();
+            if (next === "" || next === level.name) {
+              nameInput.value = level.name;
+              return;
+            }
+            for (var i = 0; i < state.levels.length; i++) {
+              if (state.levels[i] !== level && state.levels[i].name === next) {
+                nameInput.value = level.name;
+                scaleMessage('A level named "' + next + '" already exists.', "err");
+                return;
+              }
+            }
+            var previous = level.name;
+            level.name = next;
+            /* Rows point at levels by name, so carry them across the rename. */
+            state.rows.forEach(function (row) {
+              if (row.importance === previous) row.importance = next;
+            });
+            scaleMessage("Renamed " + previous + " to " + next + ".", "ok");
+            renderScale();
+            applyScale();
+          });
+          tr.appendChild(el("td", {}, [nameInput]));
+
+          var weightInput = el("input", {
+            class: "f num",
+            type: "number",
+            min: "0",
+            step: "1",
+          });
+          weightInput.value = level.weight === null ? "" : String(level.weight);
+          weightInput.disabled = level.weight === null;
+          weightInput.setAttribute("aria-label", "Weight");
+          weightInput.addEventListener("input", function () {
+            var value = parseFloat(weightInput.value);
+            level.weight = isNaN(value) || value < 0 ? 0 : value;
+            applyScale();
+          });
+          weightInput.addEventListener("change", function () {
+            sortLevels();
+            renderScale();
+            applyScale();
+          });
+          tr.appendChild(el("td", {}, [weightInput]));
+
+          var widthInput = el("input", {
+            class: "f num",
+            type: "number",
+            min: "0.5",
+            step: "0.5",
+          });
+          widthInput.value = String(level.width);
+          widthInput.setAttribute("aria-label", "Line width");
+          widthInput.addEventListener("input", function () {
+            var value = parseFloat(widthInput.value);
+            level.width = isNaN(value) || value <= 0 ? 0.5 : value;
+            drawStyle(preview, level.name, "Adjacent");
+            applyScale();
+          });
+          tr.appendChild(el("td", {}, [widthInput]));
+
+          var constraint = el("input", { type: "checkbox" });
+          constraint.checked = level.weight === null;
+          constraint.setAttribute("aria-label", "Not scored");
+          constraint.addEventListener("change", function () {
+            level.weight = constraint.checked ? null : 1;
+            sortLevels();
+            renderScale();
+            applyScale();
+          });
+          tr.appendChild(
+            el("td", {}, [el("span", { class: "constraint-cell" }, [constraint])]),
+          );
+
+          var preview = el("td", { class: "preview" });
+          drawStyle(preview, level.name, "Adjacent");
+          tr.appendChild(preview);
+
+          var used = usageOf(level.name);
+          var usedCell = el("td", {
+            class: "used",
+            text: used === 0 ? "\u2014" : used + (used === 1 ? " row" : " rows"),
+          });
+          usageCells.push({ name: level.name, cell: usedCell });
+          tr.appendChild(usedCell);
+
+          var remove = el("button", { class: "del", type: "button" });
+          remove.textContent = "×";
+          remove.setAttribute("aria-label", "Remove level " + level.name);
+          remove.title =
+            used > 0
+              ? "In use by " + used + " relationship(s)"
+              : "Remove this level";
+          remove.addEventListener("click", function () {
+            if (usageOf(level.name) > 0) {
+              scaleMessage(
+                "\u201C" +
+                  level.name +
+                  "\u201D is used by " +
+                  usageOf(level.name) +
+                  " relationship(s). Change those rows first.",
+                "err",
+              );
+              return;
+            }
+            if (state.levels.length === 1) {
+              scaleMessage("The scale needs at least one level.", "err");
+              return;
+            }
+            state.levels = state.levels.filter(function (other) {
+              return other !== level;
+            });
+            scaleMessage("Removed " + level.name + ".", "ok");
+            renderScale();
+            applyScale();
+          });
+          tr.appendChild(el("td", { class: "act" }, [remove]));
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      document
+        .getElementById("scale-add")
+        .addEventListener("submit", function (event) {
+          event.preventDefault();
+          var nameField = document.getElementById("new-name");
+          var weightField = document.getElementById("new-weight");
+          var widthField = document.getElementById("new-width");
+          var constraintField = document.getElementById("new-constraint");
+
+          var name = nameField.value.trim();
+          if (name === "") {
+            scaleMessage("Give the level a name.", "err");
+            nameField.focus();
+            return;
+          }
+          for (var i = 0; i < state.levels.length; i++) {
+            if (state.levels[i].name === name) {
+              scaleMessage('A level named "' + name + '" already exists.', "err");
+              nameField.focus();
+              return;
+            }
+          }
+
+          var weight = null;
+          if (!constraintField.checked) {
+            weight = parseFloat(weightField.value);
+            if (isNaN(weight) || weight < 0) {
+              scaleMessage("Give the level a weight of 0 or more.", "err");
+              weightField.focus();
+              return;
+            }
+          }
+
+          var width = parseFloat(widthField.value);
+          if (isNaN(width) || width <= 0) {
+            scaleMessage("Give the level a line width greater than 0.", "err");
+            widthField.focus();
+            return;
+          }
+
+          state.levels.push({ name: name, weight: weight, width: width });
+          sortLevels();
+
+          nameField.value = "";
+          weightField.value = "";
+          widthField.value = "";
+          constraintField.checked = false;
+
+          scaleMessage(
+            "Added " + name + ". It is now available in the Importance column.",
+            "ok",
+          );
+          renderScale();
+          applyScale();
+          nameField.focus();
+        });
+
+      document.getElementById("reset-scale").addEventListener("click", function () {
+        state.levels = cloneLevels(DEFAULT_LEVELS);
+        state.rows.forEach(function (row) {
+          if (importanceOf(row.importance).missing) row.importance = "Important";
+        });
+        scaleMessage("Course scale restored.", "ok");
+        renderScale();
+        applyScale();
+      });
+
+      /* ------------------------------------------------------------------
+         Export
+         ------------------------------------------------------------------ */
+
+      function toJSON() {
+        return JSON.stringify(
+          {
+            case: "Layout 0",
+            centers: CENTERS,
+            maximumPossibleValue: totals().max,
+            relationships: state.rows.map(function (row) {
+              var imp = importanceOf(row.importance);
+              var entry = {
+                center1: row.c1,
+                center2: row.c2,
+                importance: row.importance,
+                weight: imp.weight,
+                desiredProximity: row.proximity,
+                reasons: row.reasons,
+                between: row.between,
+                distanceMetric: row.metric,
+              };
+              /* An I/O measurement runs from the upstream center's output
+                 station to the downstream center's input station. */
+              if (row.between === "I/O") {
+                entry.measuredFrom = { center: row.c1, station: "O" };
+                entry.measuredTo = { center: row.c2, station: "I" };
+              }
+              return entry;
+            }),
+          },
+          null,
+          2,
+        );
+      }
+
+      function toCSV() {
+        var head = [
+          "center1",
+          "center2",
+          "importance",
+          "desired_proximity",
+          "reason",
+          "between",
+          "distance_metric",
+          "station1",
+          "station2",
+          "weight",
+        ];
+        var lines = [head.join(",")];
+        state.rows.forEach(function (row) {
+          var imp = importanceOf(row.importance);
+          var io = row.between === "I/O";
+          lines.push(
+            [
+              row.c1,
+              row.c2,
+              row.importance,
+              row.proximity,
+              reasonLabel(row.reasons),
+              row.between,
+              row.metric,
+              io ? "O" : "",
+              io ? "I" : "",
+              imp.weight === null ? "" : imp.weight,
+            ].join(","),
+          );
+        });
+        return lines.join("\n");
+      }
+
+      var noteTimer = null;
+
+      function note(message) {
+        var target = document.getElementById("toolbar-note");
+        target.textContent = message;
+        if (noteTimer) window.clearTimeout(noteTimer);
+        noteTimer = window.setTimeout(function () {
+          target.textContent = "";
+        }, 2600);
+      }
+
+      function copy(text, label) {
+        function fallback() {
+          var area = el("textarea");
+          area.value = text;
+          area.style.position = "fixed";
+          area.style.opacity = "0";
+          document.body.appendChild(area);
+          area.select();
+          try {
+            document.execCommand("copy");
+            note(label + " copied");
+          } catch (err) {
+            note("Copy blocked — select the text manually");
+          }
+          document.body.removeChild(area);
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            note(label + " copied");
+          }, fallback);
+        } else {
+          fallback();
+        }
+      }
+
+      /* ------------------------------------------------------------------
+         Wiring
+         ------------------------------------------------------------------ */
+
+      document.getElementById("add").addEventListener("click", function () {
+        state.rows.push({
+          c1: "A",
+          c2: "B",
+          importance: "Important",
+          proximity: "Near",
+          reasons: ["Flow"],
+          between: "I/O",
+          metric: "Aisle",
+        });
+        render();
+        var tbody = document.getElementById("rows");
+        var last = tbody.lastElementChild;
+        if (last) last.scrollIntoView({ block: "nearest" });
+      });
+
+      document.getElementById("reset").addEventListener("click", function () {
+        state.rows = cloneLayout0();
+        render();
+        note("Layout 0 restored");
+      });
+
+      document.getElementById("copy-json").addEventListener("click", function () {
+        copy(toJSON(), "JSON");
+      });
+
+      document.getElementById("copy-csv").addEventListener("click", function () {
+        copy(toCSV(), "CSV");
+      });
+
+      state.levels = loadLevels();
+      state.curves = loadCurves();
+      var geo = normalizeStations(loadGeometry());
+      state.building = geo.building;
+      state.centers = geo.centers;
+      state.rows = load();
+      buildLegend();
+      buildCurveLegend();
+      renderCurveTable();
+      buildChart();
+      buildLayout();
+      renderGeoTable();
+      renderScale();
+      render();
+    </script>
+  </body>
+</html>
