@@ -1287,10 +1287,6 @@
             <dt>Design score</dt>
             <dd id="ev-score">0%</dd>
           </div>
-          <div class="stat">
-            <dt>Constraints met</dt>
-            <dd id="ev-constraints">0 / 0</dd>
-          </div>
         </dl>
 
         <div class="scalewrap">
@@ -2356,7 +2352,6 @@
           ["ev-value-cell", valueText],
           ["ev-score-cell", scoreText],
           ["ev-max-cell", maxText],
-          ["ev-constraints", constraintsMet + " / " + constraintsTotal],
         ].forEach(function (entry) {
           var node = document.getElementById(entry[0]);
           if (node) node.textContent = entry[1];
