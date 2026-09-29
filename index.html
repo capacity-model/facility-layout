@@ -989,7 +989,9 @@
       }
 
       .geotable {
-        min-width: 820px;
+        /* short name, description, kind, four numbers, two station controls and
+           the remove button */
+        min-width: 1060px;
       }
 
       /* The value boxes are a fixed width and sit at the left of a much wider
@@ -1009,20 +1011,23 @@
       }
 
       /* The edge select would otherwise take the full cell width and sit on top
-         of the position field. */
-      .station-pair {
+         of the position field. Written as .params.station-pair so it outranks the
+         generic .params rule, which sets flex-wrap: wrap later in the sheet and
+         would otherwise stack the two controls onto separate lines. */
+      .params.station-pair {
         align-items: center;
         flex-wrap: nowrap;
-        gap: 8px;
+        gap: 6px;
       }
 
-      .station-pair select {
+      .params.station-pair select {
         width: auto;
-        min-width: 92px;
+        min-width: 84px;
+        flex: none;
       }
 
-      .station-pair input.num {
-        width: 68px;
+      .params.station-pair input.num {
+        width: 60px;
         flex: none;
       }
 
@@ -6361,7 +6366,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929140951";
+      window.__BUILD__ = "20260929141340";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
