@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
     <meta name="description" content="Declare qualitative proximity relationships between facility centers, place the layout, and see the relationships drawn on it." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%220.9em%22%20x%3D%2250%25%22%20text-anchor%3D%22middle%22%20font-size%3D%2290%22%3E%F0%9F%93%90%3C%2Ftext%3E%3C%2Fsvg%3E" />
     <title>Proximity Relationship Table</title>
@@ -4296,6 +4297,39 @@
       renderGeoTable();
       renderScale();
       render();
+    </script>
+
+    <script>
+      window.__BUILD__ = "20260929000106";
+      (function () {
+        var KEY = "facility-layout.reload";
+        var stored = null;
+        try {
+          stored = sessionStorage.getItem(KEY);
+        } catch (err) {}
+        if (typeof fetch !== "function") return;
+        if (stored) {
+          if (stored === window.__BUILD__) {
+            try {
+              sessionStorage.removeItem(KEY);
+            } catch (err) {}
+          }
+          return;
+        }
+        fetch(location.pathname + "?stamp=" + Date.now(), { cache: "no-store" })
+          .then(function (response) {
+            return response.text();
+          })
+          .then(function (text) {
+            var found = text.match(/__BUILD__ = "(\d+)"/);
+            if (!found || found[1] === window.__BUILD__) return;
+            try {
+              sessionStorage.setItem(KEY, found[1]);
+            } catch (err) {}
+            location.reload();
+          })
+          .catch(function () {});
+      })();
     </script>
   </body>
 </html>
