@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
-    <meta name="description" content="Declare qualitative proximity relationships between facility centers, place the layout, and see the relationships drawn on it." />
+    <meta name="description" content="Proximity-Based Layout Evaluator: declare qualitative proximity relationships between centers, lay the centers out, and score the layout against them, with flow, distance and travel matrices." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%220.9em%22%20x%3D%2250%25%22%20text-anchor%3D%22middle%22%20font-size%3D%2290%22%3E%F0%9F%93%90%3C%2Ftext%3E%3C%2Fsvg%3E" />
-    <title>Proximity Relationship Table</title>
+    <title>Proximity-Based Layout Evaluator</title>
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap"
@@ -1287,11 +1287,13 @@
     <div class="wrap">
       <header>
         <p class="eyebrow">ISyE 6202 · 6335 — Facilities Layout</p>
-        <h1>Proximity Relationship Table</h1>
+        <h1>Proximity-Based Layout Evaluator</h1>
         <p class="lede">
-          Declare every qualitative proximity relationship between centers.
-          Importance sets the weight and the drawn line width; desired proximity
-          sets the drawn colour. Loaded with the Layout&nbsp;0 relationship set.
+          Declare the qualitative proximity relationships between centers, lay the
+          centers out, and see what the layout scores against them. Importance sets
+          the weight and the drawn line width; desired proximity sets the drawn
+          colour. A second tab carries the flow, distance and travel matrices.
+          Loaded with the Layout&nbsp;0 case throughout.
         </p>
         <p class="cite">
           Relationship model: Evans, G.W., M.R. Wilhelm &amp; W. Karwowski (1987),
@@ -1799,9 +1801,9 @@
       </div>
 
       <footer class="pagefoot">
-        Next step: place the centers and I/O stations so the
-        <code>Between</code> and <code>Distance metric</code> columns have geometry
-        to measure against.
+        Proximity-Based Layout Evaluator — ISyE 6202 · 6335 Supply Chain Facilities,
+        Prof. B. Montreuil. Every score on this page recomputes as the layout is
+        dragged; nothing has to be asked for.
       </footer>
     </div>
 
@@ -5822,7 +5824,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929013130";
+      window.__BUILD__ = "20260929123612";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
