@@ -2724,7 +2724,9 @@
          rather than guessed at.
          ------------------------------------------------------------------ */
 
-      var GEO_KEY = "isye6202.proximity.geometry.v1";
+      /* v2: the I/O stations were refitted to the course's own distance
+         matrix, so a browser holding the old v1 layout must take the new one. */
+      var GEO_KEY = "isye6202.proximity.geometry.v2";
 
       var DEFAULT_BUILDING = { w: 50, h: 45 };
 
@@ -2736,8 +2738,8 @@
           w: 12.5,
           h: 5.5,
           kind: "process",
-          I: { edge: "bottom", t: 0.3 },
-          O: { edge: "bottom", t: 0.65 },
+          I: { edge: "top", t: 0.72 },
+          O: { edge: "bottom", t: 0.32 },
         },
         {
           id: "MP",
@@ -2747,7 +2749,7 @@
           h: 5,
           kind: "dock",
           I: { edge: "top", t: 0.92 },
-          O: { edge: "bottom", t: 0.45 },
+          O: { edge: "bottom", t: 0.380282 },
         },
         {
           id: "B",
@@ -2756,8 +2758,8 @@
           w: 4.5,
           h: 14.5,
           kind: "process",
-          I: { edge: "right", t: 0.15 },
-          O: { edge: "right", t: 0.5 },
+          I: { edge: "left", t: 0.034483 },
+          O: { edge: "bottom", t: 0.111111 },
         },
         {
           id: "C",
@@ -2766,8 +2768,8 @@
           w: 17,
           h: 13.5,
           kind: "process",
-          I: { edge: "top", t: 0.35 },
-          O: { edge: "top", t: 0.6 },
+          I: { edge: "top", t: 0.088235 },
+          O: { edge: "top", t: 0.352941 },
         },
         {
           id: "D",
@@ -2776,8 +2778,8 @@
           w: 5.5,
           h: 13.5,
           kind: "process",
-          I: { edge: "top", t: 0.5 },
-          O: { edge: "right", t: 0.55 },
+          I: { edge: "top", t: 0.090909 },
+          O: { edge: "right", t: 0.962963 },
         },
         {
           id: "E",
@@ -2786,8 +2788,8 @@
           w: 12.5,
           h: 15,
           kind: "process",
-          I: { edge: "left", t: 0.3 },
-          O: { edge: "left", t: 0.75 },
+          I: { edge: "left", t: 0.033333 },
+          O: { edge: "left", t: 0.733333 },
         },
         {
           id: "G",
@@ -2796,8 +2798,8 @@
           w: 4.5,
           h: 22.5,
           kind: "process",
-          I: { edge: "right", t: 0.2 },
-          O: { edge: "right", t: 0.6 },
+          I: { edge: "top", t: 0.333333 },
+          O: { edge: "right", t: 0.755556 },
         },
         {
           id: "H",
@@ -2806,8 +2808,8 @@
           w: 16,
           h: 12.5,
           kind: "process",
-          I: { edge: "top", t: 0.3 },
-          O: { edge: "bottom", t: 0.4 },
+          I: { edge: "bottom", t: 0.4375 },
+          O: { edge: "left", t: 0.96 },
         },
         {
           id: "I",
@@ -2816,8 +2818,8 @@
           w: 6,
           h: 12.5,
           kind: "process",
-          I: { edge: "top", t: 0.4 },
-          O: { edge: "right", t: 0.5 },
+          I: { edge: "right", t: 0.04 },
+          O: { edge: "bottom", t: 0.916667 },
         },
         {
           id: "F",
@@ -2826,8 +2828,8 @@
           w: 12.5,
           h: 8,
           kind: "process",
-          I: { edge: "left", t: 0.25 },
-          O: { edge: "left", t: 0.7 },
+          I: { edge: "top", t: 0.28 },
+          O: { edge: "bottom", t: 0.16 },
         },
         {
           id: "PF",
@@ -2836,7 +2838,7 @@
           w: 12.5,
           h: 13,
           kind: "dock",
-          I: { edge: "left", t: 0.25 },
+          I: { edge: "left", t: 0.576923 },
           O: { edge: "bottom", t: 0.5 },
         },
         {
@@ -2846,8 +2848,8 @@
           w: 26,
           h: 5.5,
           kind: "process",
-          I: { edge: "top", t: 0.25 },
-          O: { edge: "top", t: 0.75 },
+          I: { edge: "left", t: 0.818182 },
+          O: { edge: "bottom", t: 0.942308 },
         },
       ];
 
@@ -5175,7 +5177,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929004947";
+      window.__BUILD__ = "20260929005822";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
