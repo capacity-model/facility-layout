@@ -1,6 +1,6 @@
-# :triangular_ruler: Proximity-Based Layout Evaluator
+# :triangular_ruler: Interactive Layout Design and Evaluation
 
-An interactive tool for declaring the qualitative proximity relationships between facility centers, laying the centers out, and scoring the layout against those relationships — then measuring what the layout actually costs in travel. Developed for **ISyE 6202 & 6335 — Supply Chain Facilities** at the Georgia Institute of Technology (Instructor: Prof. Benoit Montreuil).
+An interactive tool for designing a facility layout and evaluating it two ways: against the qualitative proximity relationships it was meant to honour, and against the travel its flows actually generate. Developed for **ISyE 6202 & 6335 — Supply Chain Facilities** at the Georgia Institute of Technology (Instructor: Prof. Benoit Montreuil).
 
 - **Live app:** https://capacity-model.github.io/facility-layout/
 
@@ -16,7 +16,7 @@ An interactive tool for declaring the qualitative proximity relationships betwee
 
 ### Flow and travel
 
-- **Flow estimation matrix** — loaded trips per period between centers. Empty trips are solved, not typed: a minimum-cost flow balances every center's arrivals against its departures at the least total empty travel.
+- **Loaded flow estimation matrix** — loaded trips per period between centers. Empty trips are solved, not typed: a minimum-cost flow balances every center's arrivals against its departures at the least total empty travel.
 - **Distance matrix** — measured on the layout, loaded trips from output station to input station and empty trips the other way round, along aisle shortest paths over the free space between blocks.
 - **Flow graph and heatmap** — every trip drawn along the aisle route its distance was measured on, with independent layers for proximities, loaded trips and empty trips; the heatmap sums traffic per aisle cell.
 - **Travel evaluation** — trips times distance, loaded and empty kept apart through every margin, plus total flow, total travel and average travel per center.
