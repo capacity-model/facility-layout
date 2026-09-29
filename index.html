@@ -218,6 +218,16 @@
         vertical-align: middle;
       }
 
+      .cellbox {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        height: 48px;
+        min-width: 58px;
+      }
+
       .flowtable td.rowhead {
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-weight: 600;
@@ -260,6 +270,8 @@
 
       .flowtable .empty {
         display: block;
+        width: 100%;
+        text-align: center;
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-size: 11px;
         font-style: italic;
@@ -4559,6 +4571,13 @@
             if (!a || !b || !a.I || !b.O) return 1e4;
             var si = stationAt(a, a.I);
             var so = stationAt(b, b.O);
+            /* Unloading and reloading at the same center is an internal move:
+               the vehicle drives across the center from its input dock to its
+               output dock. It must not be routed around the block, which the
+               aisle grid treats as impassable. */
+            if (fromId === toId) {
+              return Math.abs(so.x - si.x) + Math.abs(so.y - si.y);
+            }
             var d = aisleDistance(
               grid,
               { x: si.x + si.nx * CELL, y: si.y + si.ny * CELL },
@@ -4568,14 +4587,29 @@
           });
         });
 
+        /* Reloading at the center you just unloaded at is the cheapest move
+           there is, and an operator takes it whenever it is available, so the
+           diagonal is filled first and only the remainder is optimised. This is
+           also what the course's own solution does. */
+        var supply = arrivals.slice();
+        var demand = departures.slice();
+        for (var k = 0; k < n; k++) {
+          var internal = Math.min(supply[k], demand[k]);
+          if (internal > 0) {
+            empty[k][k] = internal;
+            supply[k] -= internal;
+            demand[k] -= internal;
+          }
+        }
+
         var source = 2 * n;
         var sink = source + 1;
         var edges = [];
         for (var i = 0; i < n; i++) {
-          if (arrivals[i] > 0) edges.push([source, i, arrivals[i], 0]);
-          if (departures[i] > 0) edges.push([n + i, sink, departures[i], 0]);
+          if (supply[i] > 0) edges.push([source, i, supply[i], 0]);
+          if (demand[i] > 0) edges.push([n + i, sink, demand[i], 0]);
           for (var j = 0; j < n; j++) {
-            edges.push([i, n + j, Infinity, cost[i][j]]);
+            if (i !== j) edges.push([i, n + j, Infinity, cost[i][j]]);
           }
         }
 
@@ -4630,6 +4664,8 @@
 
           order.forEach(function (toId, j) {
             var cell = el("td", { class: i === j ? "diag" : "" });
+            var box = el("div", { class: "cellbox" });
+            cell.appendChild(box);
             var trips = loadedTrips(from, toId);
             rowLoaded += trips;
             colLoaded[j] += trips;
@@ -4650,16 +4686,14 @@
                 saveFlow();
                 renderFlow();
               });
-              cell.appendChild(input);
-            } else {
-              cell.appendChild(el("div", { class: "empty-pad" }));
+              box.appendChild(input);
             }
 
             var e = Math.round(empty[i][j] * 1000) / 1000;
             rowEmpty += e;
             colEmpty[j] += e;
             if (state.showEmpty && e > 0) {
-              cell.appendChild(el("span", { class: "empty", text: String(e) }));
+              box.appendChild(el("span", { class: "empty", text: String(e) }));
             }
             tr.appendChild(cell);
           });
@@ -4950,7 +4984,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929002105";
+      window.__BUILD__ = "20260929002635";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
