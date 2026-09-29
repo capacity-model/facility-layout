@@ -145,6 +145,145 @@
         max-width: 78ch;
       }
 
+      /* ---------- tabs ---------- */
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--line);
+        margin-top: -12px;
+      }
+
+      .tab {
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        background: transparent;
+        padding: 9px 4px;
+        margin-right: 18px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .tab:hover {
+        color: var(--ink);
+        border-color: var(--line);
+      }
+
+      .tab.current {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      .tabpanel {
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+      }
+
+      /* ---------- flow matrix ---------- */
+
+      .flow {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .flowtable {
+        min-width: 1080px;
+        border-collapse: collapse;
+      }
+
+      .flowtable th {
+        background: var(--surface-2);
+        color: var(--ink-2);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 7px 6px;
+        border: 1px solid var(--line-soft);
+        white-space: nowrap;
+      }
+
+      .flowtable th.corner {
+        background: var(--surface);
+      }
+
+      .flowtable td {
+        border: 1px solid var(--line-soft);
+        padding: 0;
+        text-align: center;
+        vertical-align: middle;
+      }
+
+      .flowtable td.rowhead {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-weight: 600;
+        font-size: 12px;
+        background: var(--surface-2);
+        color: var(--ink-2);
+        padding: 0 8px;
+        text-align: left;
+      }
+
+      .flowtable input {
+        font: inherit;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        color: var(--ink);
+        background: transparent;
+        border: none;
+        width: 54px;
+        padding: 6px 2px;
+        appearance: textfield;
+      }
+
+      .flowtable input::-webkit-outer-spin-button,
+      .flowtable input::-webkit-inner-spin-button {
+        appearance: none;
+        margin: 0;
+      }
+
+      .flowtable input:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+        background: var(--surface);
+      }
+
+      .flowtable td.diag {
+        background: var(--surface-2);
+      }
+
+      .flowtable .empty {
+        display: block;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        font-style: italic;
+        font-variant-numeric: tabular-nums;
+        color: var(--warn);
+        background: var(--warn-soft);
+        padding: 1px 0 2px;
+      }
+
+      .flowtable td.total,
+      .flowtable th.total {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        background: var(--surface-2);
+        padding: 6px 8px;
+        white-space: nowrap;
+      }
+
+      .flowtable td.grand {
+        font-weight: 600;
+        border-top: 2px solid var(--ink);
+      }
+
       /* ---------- toolbar ---------- */
 
       .toolbar {
@@ -1113,173 +1252,54 @@
         </p>
       </header>
 
-      <div class="toolbar">
-        <button class="primary" id="add">Add relationship</button>
-        <button id="copy-json">Copy JSON</button>
-        <button id="copy-csv">Copy CSV</button>
-        <button id="reset">Reset to Layout 0</button>
-        <span class="toolbar-note" id="toolbar-note"></span>
-      </div>
+      <nav class="tabs" role="tablist">
+        <button
+          class="tab current"
+          id="tab-btn-proximity"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="tab-proximity"
+        >
+          Proximity relationships
+        </button>
+        <button
+          class="tab"
+          id="tab-btn-flow"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="tab-flow"
+        >
+          Flow &amp; travel
+        </button>
+      </nav>
 
-      <div class="issues" id="issues" hidden></div>
-
-      <div class="tablewrap">
-        <table id="grid">
-          <thead>
-            <tr class="group">
-              <th class="spacer" colspan="1"></th>
-              <th colspan="2">Pair of centers</th>
-              <th colspan="3" class="rule-left">Proximity relationship</th>
-              <th colspan="2" class="rule-left">Measure</th>
-              <th class="rule-left">Importance</th>
-              <th class="rule-left">Drawn as</th>
-              <th class="spacer"></th>
-            </tr>
-            <tr>
-              <th></th>
-              <th>Center 1</th>
-              <th>Center 2</th>
-              <th class="rule-left">Importance</th>
-              <th>Desired proximity</th>
-              <th>Reason</th>
-              <th class="rule-left">Between</th>
-              <th>Distance metric</th>
-              <th class="rule-left">weight</th>
-              <th class="rule-left">colour · width</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-          <tfoot>
-            <tr>
-              <td colspan="8">Maximum possible value</td>
-              <td class="total rule-left" id="max-value">0</td>
-              <td colspan="2"></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <dl class="stats">
-        <div class="stat">
-          <dt>Relationships</dt>
-          <dd id="s-total">0</dd>
-        </div>
-        <div class="stat">
-          <dt>Scored</dt>
-          <dd id="s-scored">0</dd>
-        </div>
-        <div class="stat">
-          <dt>Vital constraints</dt>
-          <dd id="s-vital">0</dd>
-        </div>
-        <div class="stat">
-          <dt>Maximum possible value</dt>
-          <dd id="s-max">0</dd>
-        </div>
-      </dl>
-
-      <div class="legend">
-        <section class="panel">
-          <h2>Desired proximity → colour</h2>
-          <div id="legend-colour"></div>
-          <p class="note">
-            Colour states what the relationship <em>asks for</em>, not whether the
-            layout delivers it. “Not far” is the same orange as “far”, drawn dotted.
-          </p>
-        </section>
-
-        <section class="panel">
-          <h2>Importance → line width &amp; weight</h2>
-          <div id="legend-width"></div>
-          <p class="note">
-            Weights step by powers of four, so one critical relationship outranks
-            sixty-three desirable ones. Vital relationships carry no weight — they
-            are feasibility constraints, drawn at width 18 with a white X.
-          </p>
-        </section>
-      </div>
-
-      <section class="panel geo">
-        <div class="scale-head">
-          <h2>Layout geometry</h2>
-          <span class="constraint-cell">
-            <input id="show-lines" type="checkbox" checked />
-            Show relationships
-          </span>
-          <button id="reset-geo" type="button">Reset to Layout 0</button>
+      <div class="tabpanel" id="tab-proximity" role="tabpanel">
+        <div class="toolbar">
+          <button class="primary" id="add">Add relationship</button>
+          <button id="copy-json">Copy JSON</button>
+          <button id="copy-csv">Copy CSV</button>
+          <button id="reset">Reset to Layout 0</button>
+          <span class="toolbar-note" id="toolbar-note"></span>
         </div>
 
-        <p class="scale-lede">
-          Drag a center to move it, drag the square at its lower-right corner to
-          resize, and drag a triangle to slide that station around its center's
-          walls. A hollow triangle pointing inward is the input station; a solid one
-          pointing outward is the output. The relationship table decides which
-          stations exist: a center gets an output the moment some relationship
-          measures from it and an input the moment one measures to it, and the
-          station leaves again when the last of those relationships does. This table
-          only sets where each one sits, and a position is remembered while unused.
-          Traced from the course drawing — the block positions reproduce the
-          centroid distances the course reports for B–D, B–C and C–D.
-        </p>
+        <div class="issues" id="issues" hidden></div>
 
-        <div class="paper geo-paper">
-          <div id="layout"></div>
-        </div>
-
-        <div class="issues" id="geo-issues" hidden></div>
-
-        <div class="scalewrap">
-          <table class="geotable">
-            <thead>
-              <tr>
-                <th>Center</th>
-                <th>Kind</th>
-                <th>x</th>
-                <th>y</th>
-                <th>width</th>
-                <th>height</th>
-                <th>Input station</th>
-                <th>Output station</th>
-              </tr>
-            </thead>
-            <tbody id="geo-rows"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel eval">
-        <div class="scale-head">
-          <h2>Layout evaluation</h2>
-          <span class="eval-note" id="eval-note"></span>
-        </div>
-
-        <dl class="stats">
-          <div class="stat">
-            <dt>Maximum possible value</dt>
-            <dd id="ev-max">0</dd>
-          </div>
-          <div class="stat">
-            <dt>Design value</dt>
-            <dd id="ev-value">0</dd>
-          </div>
-          <div class="stat">
-            <dt>Design score</dt>
-            <dd id="ev-score">0%</dd>
-          </div>
-        </dl>
-
-        <div class="scalewrap">
-          <table class="evaltable">
+        <div class="tablewrap">
+          <table id="grid">
             <thead>
               <tr class="group">
+                <th class="spacer" colspan="1"></th>
                 <th colspan="2">Pair of centers</th>
                 <th colspan="3" class="rule-left">Proximity relationship</th>
                 <th colspan="2" class="rule-left">Measure</th>
                 <th class="rule-left">Importance</th>
-                <th colspan="3" class="rule-left">Design evaluation</th>
+                <th class="rule-left">Drawn as</th>
+                <th class="spacer"></th>
               </tr>
               <tr>
+                <th></th>
                 <th>Center 1</th>
                 <th>Center 2</th>
                 <th class="rule-left">Importance</th>
@@ -1288,150 +1308,337 @@
                 <th class="rule-left">Between</th>
                 <th>Distance metric</th>
                 <th class="rule-left">weight</th>
-                <th class="rule-left" style="text-align: right">Distance</th>
-                <th style="text-align: right">Satisfaction</th>
-                <th style="text-align: right">Contribution</th>
+                <th class="rule-left">colour · width</th>
+                <th></th>
               </tr>
             </thead>
-            <tbody id="eval-rows"></tbody>
+            <tbody id="rows"></tbody>
             <tfoot>
               <tr>
-                <td colspan="7">Maximum possible value</td>
-                <td class="total rule-left" id="ev-max-cell">0</td>
-                <td colspan="2">Design value</td>
-                <td class="total" id="ev-value-cell">0</td>
-              </tr>
-              <tr class="score">
-                <td colspan="8"></td>
-                <td colspan="2">Design score</td>
-                <td class="total" id="ev-score-cell">0%</td>
+                <td colspan="8">Maximum possible value</td>
+                <td class="total rule-left" id="max-value">0</td>
+                <td colspan="2"></td>
               </tr>
             </tfoot>
           </table>
         </div>
-      </section>
 
-      <section class="panel curves">
-        <div class="scale-head">
-          <h2>Satisfaction curves</h2>
-          <button id="reset-curves" type="button">Reset to default curves</button>
+        <dl class="stats">
+          <div class="stat">
+            <dt>Relationships</dt>
+            <dd id="s-total">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Scored</dt>
+            <dd id="s-scored">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Vital constraints</dt>
+            <dd id="s-vital">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Maximum possible value</dt>
+            <dd id="s-max">0</dd>
+          </div>
+        </dl>
+
+        <div class="legend">
+          <section class="panel">
+            <h2>Desired proximity → colour</h2>
+            <div id="legend-colour"></div>
+            <p class="note">
+              Colour states what the relationship <em>asks for</em>, not whether the
+              layout delivers it. “Not far” is the same orange as “far”, drawn
+              dotted.
+            </p>
+          </section>
+
+          <section class="panel">
+            <h2>Importance → line width &amp; weight</h2>
+            <div id="legend-width"></div>
+            <p class="note">
+              Weights step by powers of four, so one critical relationship outranks
+              sixty-three desirable ones. Vital relationships carry no weight — they
+              are feasibility constraints, drawn at width 18 with a white X.
+            </p>
+          </section>
         </div>
 
-        <p class="scale-lede">
-          One curve per desired proximity. Read a relationship's desired proximity
-          from the table, take its measured distance along the bottom, and the curve
-          gives the satisfaction that multiplies its weight. Adjacent through Not
-          far fall as distance grows; Far and Very far rise. The dots are the
-          distances and satisfactions the course case reports — a curve that misses
-          them will not reproduce Layout 0's score.
-        </p>
-
-        <div class="paper" id="chart-paper">
-          <div class="curve-legend" id="curve-legend"></div>
-          <div id="chart"></div>
-        </div>
-
-        <div class="scalewrap">
-          <table class="curvetable">
-            <thead>
-              <tr>
-                <th>Desired proximity</th>
-                <th>Form</th>
-                <th>Parameters (meters)</th>
-                <th>Drawn as</th>
-              </tr>
-            </thead>
-            <tbody id="curve-rows"></tbody>
-          </table>
-        </div>
-
-        <p class="note">
-          A <strong>ramp</strong> runs between the distance where satisfaction is 1
-          and the distance where it is 0; <em>bend</em> curves it — 1 is a straight
-          line, above 1 drops off faster at first, below 1 holds on longer. A
-          <strong>bell</strong> peaks at its ideal distance and falls away on both
-          sides, reaching half satisfaction one half-width out; it is the only form
-          that can say &ldquo;not too far, not too near&rdquo;, where closer is not
-          always better. The axis runs to <span id="axis-label">30</span>&nbsp;m —
-          raise it for a larger facility.
-        </p>
-      </section>
-
-      <section class="panel scale">
-        <div class="scale-head">
-          <h2>Importance scale</h2>
-          <button id="reset-scale" type="button">Reset to course scale</button>
-        </div>
-
-        <p class="scale-lede">
-          Every level available in the table's Importance column. Rename one, change
-          its weight or its drawn line width, or add a level of your own — the
-          Importance dropdown and the maximum possible value update straight away. A
-          level marked <em>constraint</em> carries no weight: it must be satisfied
-          for the layout to be feasible, and is drawn with a white X.
-        </p>
-
-        <div class="scalewrap">
-          <table class="scaletable">
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th>weight</th>
-                <th>line width</th>
-                <th>Not scored</th>
-                <th>Drawn as</th>
-                <th>Used by</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="scale-rows"></tbody>
-          </table>
-        </div>
-
-        <form class="scale-add" id="scale-add">
-          <label class="field grow">
-            <span>Level name</span>
-            <input
-              class="f"
-              id="new-name"
-              type="text"
-              placeholder="Somewhat important"
-              maxlength="40"
-            />
-          </label>
-          <label class="field">
-            <span>weight</span>
-            <input
-              class="f num"
-              id="new-weight"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="2"
-            />
-          </label>
-          <label class="field">
-            <span>line width</span>
-            <input
-              class="f num"
-              id="new-width"
-              type="number"
-              min="0.5"
-              step="0.5"
-              placeholder="2.5"
-            />
-          </label>
-          <label class="field check">
+        <section class="panel geo">
+          <div class="scale-head">
+            <h2>Layout geometry</h2>
             <span class="constraint-cell">
-              <input id="new-constraint" type="checkbox" />
-              Not scored
+              <input id="show-lines" type="checkbox" checked />
+              Show relationships
             </span>
-          </label>
-          <button class="primary" id="add-level" type="submit">Add level</button>
-        </form>
+            <button id="reset-geo" type="button">Reset to Layout 0</button>
+          </div>
 
-        <p class="scale-msg" id="scale-msg"></p>
-      </section>
+          <p class="scale-lede">
+            Drag a center to move it, drag the square at its lower-right corner to
+            resize, and drag a triangle to slide that station around its center's
+            walls. A hollow triangle pointing inward is the input station; a solid
+            one pointing outward is the output. The relationship table decides which
+            stations exist: a center gets an output the moment some relationship
+            measures from it and an input the moment one measures to it, and the
+            station leaves again when the last of those relationships does. This
+            table only sets where each one sits, and a position is remembered while
+            unused. Traced from the course drawing — the block positions reproduce
+            the centroid distances the course reports for B–D, B–C and C–D.
+          </p>
+
+          <div class="paper geo-paper">
+            <div id="layout"></div>
+          </div>
+
+          <div class="issues" id="geo-issues" hidden></div>
+
+          <div class="scalewrap">
+            <table class="geotable">
+              <thead>
+                <tr>
+                  <th>Center</th>
+                  <th>Kind</th>
+                  <th>x</th>
+                  <th>y</th>
+                  <th>width</th>
+                  <th>height</th>
+                  <th>Input station</th>
+                  <th>Output station</th>
+                </tr>
+              </thead>
+              <tbody id="geo-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel eval">
+          <div class="scale-head">
+            <h2>Layout evaluation</h2>
+            <span class="eval-note" id="eval-note"></span>
+          </div>
+
+          <dl class="stats">
+            <div class="stat">
+              <dt>Maximum possible value</dt>
+              <dd id="ev-max">0</dd>
+            </div>
+            <div class="stat">
+              <dt>Design value</dt>
+              <dd id="ev-value">0</dd>
+            </div>
+            <div class="stat">
+              <dt>Design score</dt>
+              <dd id="ev-score">0%</dd>
+            </div>
+          </dl>
+
+          <div class="scalewrap">
+            <table class="evaltable">
+              <thead>
+                <tr class="group">
+                  <th colspan="2">Pair of centers</th>
+                  <th colspan="3" class="rule-left">Proximity relationship</th>
+                  <th colspan="2" class="rule-left">Measure</th>
+                  <th class="rule-left">Importance</th>
+                  <th colspan="3" class="rule-left">Design evaluation</th>
+                </tr>
+                <tr>
+                  <th>Center 1</th>
+                  <th>Center 2</th>
+                  <th class="rule-left">Importance</th>
+                  <th>Desired proximity</th>
+                  <th>Reason</th>
+                  <th class="rule-left">Between</th>
+                  <th>Distance metric</th>
+                  <th class="rule-left">weight</th>
+                  <th class="rule-left" style="text-align: right">Distance</th>
+                  <th style="text-align: right">Satisfaction</th>
+                  <th style="text-align: right">Contribution</th>
+                </tr>
+              </thead>
+              <tbody id="eval-rows"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="7">Maximum possible value</td>
+                  <td class="total rule-left" id="ev-max-cell">0</td>
+                  <td colspan="2">Design value</td>
+                  <td class="total" id="ev-value-cell">0</td>
+                </tr>
+                <tr class="score">
+                  <td colspan="8"></td>
+                  <td colspan="2">Design score</td>
+                  <td class="total" id="ev-score-cell">0%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel curves">
+          <div class="scale-head">
+            <h2>Satisfaction curves</h2>
+            <button id="reset-curves" type="button">Reset to default curves</button>
+          </div>
+
+          <p class="scale-lede">
+            One curve per desired proximity. Read a relationship's desired proximity
+            from the table, take its measured distance along the bottom, and the
+            curve gives the satisfaction that multiplies its weight. Adjacent
+            through Not far fall as distance grows; Far and Very far rise. The dots
+            are the distances and satisfactions the course case reports — a curve
+            that misses them will not reproduce Layout 0's score.
+          </p>
+
+          <div class="paper" id="chart-paper">
+            <div class="curve-legend" id="curve-legend"></div>
+            <div id="chart"></div>
+          </div>
+
+          <div class="scalewrap">
+            <table class="curvetable">
+              <thead>
+                <tr>
+                  <th>Desired proximity</th>
+                  <th>Form</th>
+                  <th>Parameters (meters)</th>
+                  <th>Drawn as</th>
+                </tr>
+              </thead>
+              <tbody id="curve-rows"></tbody>
+            </table>
+          </div>
+
+          <p class="note">
+            A <strong>ramp</strong> runs between the distance where satisfaction is
+            1 and the distance where it is 0; <em>bend</em> curves it — 1 is a
+            straight line, above 1 drops off faster at first, below 1 holds on
+            longer. A <strong>bell</strong> peaks at its ideal distance and falls
+            away on both sides, reaching half satisfaction one half-width out; it is
+            the only form that can say &ldquo;not too far, not too near&rdquo;,
+            where closer is not always better. The axis runs to
+            <span id="axis-label">30</span>&nbsp;m — raise it for a larger facility.
+          </p>
+        </section>
+
+        <section class="panel scale">
+          <div class="scale-head">
+            <h2>Importance scale</h2>
+            <button id="reset-scale" type="button">Reset to course scale</button>
+          </div>
+
+          <p class="scale-lede">
+            Every level available in the table's Importance column. Rename one,
+            change its weight or its drawn line width, or add a level of your own —
+            the Importance dropdown and the maximum possible value update straight
+            away. A level marked <em>constraint</em> carries no weight: it must be
+            satisfied for the layout to be feasible, and is drawn with a white X.
+          </p>
+
+          <div class="scalewrap">
+            <table class="scaletable">
+              <thead>
+                <tr>
+                  <th>Level</th>
+                  <th>weight</th>
+                  <th>line width</th>
+                  <th>Not scored</th>
+                  <th>Drawn as</th>
+                  <th>Used by</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="scale-rows"></tbody>
+            </table>
+          </div>
+
+          <form class="scale-add" id="scale-add">
+            <label class="field grow">
+              <span>Level name</span>
+              <input
+                class="f"
+                id="new-name"
+                type="text"
+                placeholder="Somewhat important"
+                maxlength="40"
+              />
+            </label>
+            <label class="field">
+              <span>weight</span>
+              <input
+                class="f num"
+                id="new-weight"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="2"
+              />
+            </label>
+            <label class="field">
+              <span>line width</span>
+              <input
+                class="f num"
+                id="new-width"
+                type="number"
+                min="0.5"
+                step="0.5"
+                placeholder="2.5"
+              />
+            </label>
+            <label class="field check">
+              <span class="constraint-cell">
+                <input id="new-constraint" type="checkbox" />
+                Not scored
+              </span>
+            </label>
+            <button class="primary" id="add-level" type="submit">Add level</button>
+          </form>
+
+          <p class="scale-msg" id="scale-msg"></p>
+        </section>
+      </div>
+
+      <div class="tabpanel" id="tab-flow" role="tabpanel" hidden>
+        <section class="panel flow">
+          <div class="scale-head">
+            <h2>Flow estimation matrix</h2>
+            <div class="geo-tools">
+              <span class="constraint-cell">
+                <input id="show-empty" type="checkbox" checked />
+                Show empty trips
+              </span>
+              <button id="reset-flow" type="button">Load the course example</button>
+              <button id="clear-flow" type="button">Clear</button>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            Enter the loaded trips per period from each center to every other —
+            these come from the process and organization design, or from flow
+            tracking. A loaded trip runs from the source center's output station to
+            the destination's input station. Everything else on this page is
+            computed: the empty trips that return each vehicle to its next pickup,
+            and every margin total. The diagonal takes no input, because a center
+            never ships a loaded trip to itself.
+          </p>
+
+          <div class="issues" id="flow-issues" hidden></div>
+
+          <div class="scalewrap">
+            <table class="flowtable" id="flow-grid"></table>
+          </div>
+
+          <p class="note">
+            Shaded italics are empty trips, running the other way round — from the
+            source center's <em>input</em> station to the destination's
+            <em>output</em> station, because a vehicle that has just unloaded is
+            standing at the input dock. They are placed so that every center
+            balances, arrivals equalling departures, at the least total empty
+            travel. The diagonal carries the cheapest move of all: unload and reload
+            within the same center.
+          </p>
+        </section>
+      </div>
 
       <footer class="pagefoot">
         Next step: place the centers and I/O stations so the
@@ -1687,6 +1894,8 @@
         centers: [],
         snap: 0.5,
         showLines: true,
+        flow: {},
+        showEmpty: true,
       };
 
       function cloneLayout0() {
@@ -4142,6 +4351,445 @@
       });
 
       /* ------------------------------------------------------------------
+         Flow estimation matrix
+
+         Loaded trips are the input. Empty trips are solved for: a vehicle that
+         has just unloaded stands at a center's input station and has to reach the
+         output station of wherever it loads next, so the empties that balance
+         every center are a transportation problem — supply is what arrived
+         loaded, demand is what departs loaded — solved at least total travel.
+         ------------------------------------------------------------------ */
+
+      var FLOW_KEY = "isye6202.proximity.flow.v1";
+
+      /* The course prints the matrix in process order rather than alphabetically. */
+      var FLOW_ORDER = [
+        "MP",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "PF",
+      ];
+
+      /* Slide 12's loaded matrix, 28 entries totalling 3485 trips per period. */
+      var COURSE_FLOW = {
+        "MP|A": 150,
+        "MP|B": 50,
+        "MP|E": 300,
+        "A|B": 25,
+        "A|C": 125,
+        "A|D": 25,
+        "B|C": 15,
+        "B|D": 10,
+        "B|J": 100,
+        "B|PF": 5,
+        "C|D": 40,
+        "C|E": 175,
+        "D|A": 25,
+        "D|B": 10,
+        "D|C": 40,
+        "D|J": 25,
+        "E|B": 45,
+        "E|F": 300,
+        "E|H": 15,
+        "E|PF": 430,
+        "F|H": 300,
+        "G|I": 350,
+        "H|I": 300,
+        "I|PF": 500,
+        "J|C": 35,
+        "J|D": 25,
+        "J|I": 20,
+        "J|PF": 45,
+      };
+
+      function flowOrder() {
+        var known = {};
+        state.centers.forEach(function (c) {
+          known[c.id] = true;
+        });
+        var ordered = FLOW_ORDER.filter(function (id) {
+          return known[id];
+        });
+        state.centers.forEach(function (c) {
+          if (ordered.indexOf(c.id) === -1) ordered.push(c.id);
+        });
+        return ordered;
+      }
+
+      function loadFlow() {
+        try {
+          var raw = window.localStorage.getItem(FLOW_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") return parsed;
+          }
+        } catch (err) {
+          /* blocked storage — fall through to the course example */
+        }
+        var copy = {};
+        Object.keys(COURSE_FLOW).forEach(function (k) {
+          copy[k] = COURSE_FLOW[k];
+        });
+        return copy;
+      }
+
+      function saveFlow() {
+        try {
+          window.localStorage.setItem(FLOW_KEY, JSON.stringify(state.flow));
+        } catch (err) {
+          /* the matrix still works without a saved draft */
+        }
+      }
+
+      function loadedTrips(from, to) {
+        var v = state.flow[from + "|" + to];
+        return typeof v === "number" && isFinite(v) && v > 0 ? v : 0;
+      }
+
+      /* ------------------------------------------------------------------
+         Minimum-cost flow over a bipartite transportation network.
+         Source -> each center that vehicles arrive at (supply = loaded arrivals)
+         -> each center that vehicles depart from (demand = loaded departures)
+         -> sink. Twelve centers each side, so the simplest correct algorithm —
+         shortest augmenting paths with potentials — is more than fast enough.
+         ------------------------------------------------------------------ */
+
+      function minCostFlow(nodeCount, edges, source, sink) {
+        var head = [],
+          next = [],
+          to = [],
+          cap = [],
+          cost = [];
+        var first = new Int32Array(nodeCount).fill(-1);
+
+        function addEdge(u, v, c, w) {
+          to.push(v);
+          cap.push(c);
+          cost.push(w);
+          next.push(first[u]);
+          first[u] = to.length - 1;
+          to.push(u);
+          cap.push(0);
+          cost.push(-w);
+          next.push(first[v]);
+          first[v] = to.length - 1;
+        }
+        edges.forEach(function (e) {
+          addEdge(e[0], e[1], e[2], e[3]);
+        });
+
+        var INF = Infinity;
+        var total = 0;
+        while (true) {
+          var dist = new Array(nodeCount).fill(INF);
+          var inQueue = new Array(nodeCount).fill(false);
+          var prevEdge = new Int32Array(nodeCount).fill(-1);
+          dist[source] = 0;
+          var queue = [source];
+          inQueue[source] = true;
+          while (queue.length) {
+            var u = queue.shift();
+            inQueue[u] = false;
+            for (var e = first[u]; e !== -1; e = next[e]) {
+              if (cap[e] <= 0) continue;
+              var v = to[e];
+              if (dist[u] + cost[e] < dist[v] - 1e-9) {
+                dist[v] = dist[u] + cost[e];
+                prevEdge[v] = e;
+                if (!inQueue[v]) {
+                  inQueue[v] = true;
+                  queue.push(v);
+                }
+              }
+            }
+          }
+          if (dist[sink] === INF) break;
+
+          var push = INF;
+          for (var node = sink; node !== source; node = to[prevEdge[node] ^ 1]) {
+            push = Math.min(push, cap[prevEdge[node]]);
+          }
+          for (node = sink; node !== source; node = to[prevEdge[node] ^ 1]) {
+            cap[prevEdge[node]] -= push;
+            cap[prevEdge[node] ^ 1] += push;
+          }
+          total += push;
+        }
+
+        return { edges: to, cap: cap, first: first, next: next, total: total };
+      }
+
+      /* Empty trips that balance every center, at least total travel. */
+      function solveEmpty(order) {
+        var n = order.length;
+        var arrivals = new Array(n).fill(0);
+        var departures = new Array(n).fill(0);
+        order.forEach(function (from, i) {
+          order.forEach(function (toId, j) {
+            var trips = loadedTrips(from, toId);
+            departures[i] += trips;
+            arrivals[j] += trips;
+          });
+        });
+
+        var empty = order.map(function () {
+          return new Array(n).fill(0);
+        });
+        var moved = arrivals.reduce(function (a, b) {
+          return a + b;
+        }, 0);
+        if (moved === 0)
+          return { empty: empty, arrivals: arrivals, departures: departures };
+
+        /* cost: from the arriving center's input station to the next pickup's
+           output station, along the aisles */
+        var grid = buildGrid();
+        var cost = order.map(function (fromId) {
+          var a = centerById(fromId);
+          return order.map(function (toId) {
+            var b = centerById(toId);
+            if (!a || !b || !a.I || !b.O) return 1e4;
+            var si = stationAt(a, a.I);
+            var so = stationAt(b, b.O);
+            var d = aisleDistance(
+              grid,
+              { x: si.x + si.nx * CELL, y: si.y + si.ny * CELL },
+              { x: so.x + so.nx * CELL, y: so.y + so.ny * CELL },
+            );
+            return d === null ? 1e4 : d;
+          });
+        });
+
+        var source = 2 * n;
+        var sink = source + 1;
+        var edges = [];
+        for (var i = 0; i < n; i++) {
+          if (arrivals[i] > 0) edges.push([source, i, arrivals[i], 0]);
+          if (departures[i] > 0) edges.push([n + i, sink, departures[i], 0]);
+          for (var j = 0; j < n; j++) {
+            edges.push([i, n + j, Infinity, cost[i][j]]);
+          }
+        }
+
+        var net = minCostFlow(sink + 1, edges, source, sink);
+
+        /* read the assignment back off the residual capacities */
+        for (i = 0; i < n; i++) {
+          for (var e = net.first[i]; e !== -1; e = net.next[e]) {
+            var v = net.edges[e];
+            if (v >= n && v < 2 * n && net.cap[e ^ 1] > 0) {
+              empty[i][v - n] += net.cap[e ^ 1];
+            }
+          }
+        }
+
+        return { empty: empty, arrivals: arrivals, departures: departures };
+      }
+
+      function renderFlow() {
+        var table = document.getElementById("flow-grid");
+        if (!table) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+
+        var order = flowOrder();
+        var n = order.length;
+        var solved = solveEmpty(order);
+        var empty = solved.empty;
+
+        var thead = el("thead");
+        var headRow = el("tr");
+        headRow.appendChild(el("th", { class: "corner", text: "From / To" }));
+        order.forEach(function (id) {
+          headRow.appendChild(el("th", { text: id }));
+        });
+        ["Loaded", "Empty", "Total from"].forEach(function (label) {
+          headRow.appendChild(el("th", { class: "total", text: label }));
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        var tbody = el("tbody");
+        var loadedTotal = 0;
+        var emptyTotal = 0;
+        var colLoaded = new Array(n).fill(0);
+        var colEmpty = new Array(n).fill(0);
+
+        order.forEach(function (from, i) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: from }));
+          var rowLoaded = 0;
+          var rowEmpty = 0;
+
+          order.forEach(function (toId, j) {
+            var cell = el("td", { class: i === j ? "diag" : "" });
+            var trips = loadedTrips(from, toId);
+            rowLoaded += trips;
+            colLoaded[j] += trips;
+
+            /* A center never ships a loaded trip to itself, so the diagonal takes
+               no input — it carries only the unload-to-reload move. */
+            if (i !== j) {
+              var input = el("input", { type: "number", min: "0", step: "1" });
+              input.value = trips ? String(trips) : "";
+              input.setAttribute(
+                "aria-label",
+                from + " to " + toId + " loaded trips",
+              );
+              input.addEventListener("change", function () {
+                var v = parseFloat(input.value);
+                if (isNaN(v) || v <= 0) delete state.flow[from + "|" + toId];
+                else state.flow[from + "|" + toId] = v;
+                saveFlow();
+                renderFlow();
+              });
+              cell.appendChild(input);
+            } else {
+              cell.appendChild(el("div", { class: "empty-pad" }));
+            }
+
+            var e = Math.round(empty[i][j] * 1000) / 1000;
+            rowEmpty += e;
+            colEmpty[j] += e;
+            if (state.showEmpty && e > 0) {
+              cell.appendChild(el("span", { class: "empty", text: String(e) }));
+            }
+            tr.appendChild(cell);
+          });
+
+          loadedTotal += rowLoaded;
+          emptyTotal += rowEmpty;
+          tr.appendChild(el("td", { class: "total", text: String(rowLoaded) }));
+          tr.appendChild(el("td", { class: "total", text: String(rowEmpty) }));
+          tr.appendChild(
+            el("td", { class: "total", text: String(rowLoaded + rowEmpty) }),
+          );
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        var tfoot = el("tfoot");
+        function footRow(label, values, extra) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: label }));
+          values.forEach(function (v) {
+            tr.appendChild(el("td", { class: "total", text: String(v) }));
+          });
+          extra.forEach(function (v) {
+            tr.appendChild(el("td", { class: "total grand", text: v }));
+          });
+          return tr;
+        }
+        tfoot.appendChild(
+          footRow("Loaded", colLoaded, [String(loadedTotal), "", ""]),
+        );
+        tfoot.appendChild(footRow("Empty", colEmpty, ["", String(emptyTotal), ""]));
+        tfoot.appendChild(
+          footRow(
+            "Total to",
+            colLoaded.map(function (v, j) {
+              return v + colEmpty[j];
+            }),
+            ["", "", String(loadedTotal + emptyTotal)],
+          ),
+        );
+        table.appendChild(tfoot);
+
+        /* Every center must balance, and the two grand totals must agree. */
+        var problems = [];
+        order.forEach(function (id, i) {
+          var from = 0,
+            to = 0;
+          order.forEach(function (other, j) {
+            from += loadedTrips(id, other) + empty[i][j];
+            to += loadedTrips(other, id) + empty[j][i];
+          });
+          if (Math.abs(from - to) > 0.001) {
+            problems.push(
+              id +
+                " does not balance: " +
+                from.toFixed(1) +
+                " out, " +
+                to.toFixed(1) +
+                " in.",
+            );
+          }
+        });
+        if (Math.abs(loadedTotal - emptyTotal) > 0.001) {
+          problems.push(
+            "Loaded trips (" +
+              loadedTotal +
+              ") and empty trips (" +
+              emptyTotal +
+              ") should match: every load is followed by one empty move.",
+          );
+        }
+
+        var box = document.getElementById("flow-issues");
+        while (box.firstChild) box.removeChild(box.firstChild);
+        if (problems.length) {
+          box.appendChild(el("strong", { text: problems.length + " to check" }));
+          problems.forEach(function (msg) {
+            box.appendChild(el("span", { text: msg }));
+          });
+          box.hidden = false;
+        } else {
+          box.hidden = true;
+        }
+      }
+
+      document.getElementById("reset-flow").addEventListener("click", function () {
+        state.flow = {};
+        Object.keys(COURSE_FLOW).forEach(function (k) {
+          state.flow[k] = COURSE_FLOW[k];
+        });
+        saveFlow();
+        renderFlow();
+      });
+
+      document.getElementById("clear-flow").addEventListener("click", function () {
+        state.flow = {};
+        saveFlow();
+        renderFlow();
+      });
+
+      document
+        .getElementById("show-empty")
+        .addEventListener("change", function (event) {
+          state.showEmpty = event.target.checked;
+          renderFlow();
+        });
+
+      /* ------------------------------------------------------------------
+         Tabs
+         ------------------------------------------------------------------ */
+
+      [
+        ["tab-btn-proximity", "tab-proximity"],
+        ["tab-btn-flow", "tab-flow"],
+      ].forEach(function (pair, index, all) {
+        document.getElementById(pair[0]).addEventListener("click", function () {
+          all.forEach(function (other) {
+            var chosen = other === pair;
+            var button = document.getElementById(other[0]);
+            button.className = "tab" + (chosen ? " current" : "");
+            button.setAttribute("aria-selected", chosen ? "true" : "false");
+            document.getElementById(other[1]).hidden = !chosen;
+          });
+          /* the flow page depends on geometry that may have moved meanwhile */
+          if (pair[1] === "tab-flow") renderFlow();
+          window.scrollTo({ top: 0 });
+        });
+      });
+
+      /* ------------------------------------------------------------------
          Export
          ------------------------------------------------------------------ */
 
@@ -4289,18 +4937,20 @@
       state.building = geo.building;
       state.centers = geo.centers;
       state.rows = load();
+      state.flow = loadFlow();
       buildLegend();
       buildCurveLegend();
       renderCurveTable();
       buildChart();
       buildLayout();
       renderGeoTable();
+      renderFlow();
       renderScale();
       render();
     </script>
 
     <script>
-      window.__BUILD__ = "20260929000106";
+      window.__BUILD__ = "20260929002105";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
