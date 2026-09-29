@@ -272,6 +272,12 @@
         background: var(--warn-soft);
       }
 
+      .flowtable input.ghost::placeholder {
+        color: var(--warn);
+        font-style: italic;
+        opacity: 1;
+      }
+
       .flowtable .empty {
         display: block;
         width: 100%;
@@ -4696,7 +4702,16 @@
             colEmpty[j] += e;
             if (state.showEmpty && e > 0) {
               cell.className = (i === j ? "diag " : "") + "hasempty";
-              box.appendChild(el("span", { class: "empty", text: String(e) }));
+              var field = box.querySelector("input");
+              if (field && !trips) {
+                /* No loaded trips here, so the empty value rides in the field's
+                   own placeholder: it sits dead centre and steps aside the moment
+                   someone types a loaded figure. */
+                field.placeholder = String(e);
+                field.className = "ghost";
+              } else {
+                box.appendChild(el("span", { class: "empty", text: String(e) }));
+              }
             }
             tr.appendChild(cell);
           });
@@ -4987,7 +5002,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929003606";
+      window.__BUILD__ = "20260929003748";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
