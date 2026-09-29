@@ -1767,6 +1767,35 @@
             measured straight through the block rather than around it.
           </p>
         </section>
+
+        <section class="panel flow">
+          <div class="scale-head">
+            <h2>Travel evaluation</h2>
+          </div>
+
+          <p class="scale-lede">
+            Trips times distance, cell by cell &mdash; the metres a vehicle covers
+            per period on each move. This is the number a layout is judged on: the
+            two matrices above are its two halves, and everything a redesign is
+            trying to cut shows up here. The margins split loaded from empty,
+            because a metre driven empty earns nothing.
+          </p>
+
+          <div class="scalewrap">
+            <table class="flowtable dist" id="travel-grid"></table>
+          </div>
+
+          <p class="note">
+            The average columns are metres per trip, not metres per period: total
+            travel divided by the trips that made it. A center with a high average
+            is one whose work arrives from far away, which is the case for moving it
+            &mdash; high traffic at a short average is already well placed.
+          </p>
+
+          <div class="scalewrap">
+            <table class="flowtable dist" id="travel-summary"></table>
+          </div>
+        </section>
       </div>
 
       <footer class="pagefoot">
@@ -4917,6 +4946,7 @@
            flow table rather than keeping their own trigger. Geometry changes
            reach them when the tab is opened. */
         renderDistance();
+        renderTravel();
         renderFlowGraph();
       }
 
@@ -5328,6 +5358,249 @@
         return String(Math.round(d));
       }
 
+      /* ------------------------------------------------------------------
+         Travel evaluation (slide 14)
+         ------------------------------------------------------------------ */
+
+      function round0(v) {
+        return Math.round(v);
+      }
+
+      function renderTravel() {
+        var table = document.getElementById("travel-grid");
+        var summary = document.getElementById("travel-summary");
+        if (!table || !summary) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+        while (summary.firstChild) summary.removeChild(summary.firstChild);
+
+        var order = flowOrder();
+        var n = order.length;
+        var empty = solveEmpty(order).empty;
+        var grid = buildGrid();
+        var metric = state.distMetric;
+
+        /* Trips and metres, kept apart all the way to the margins, because the
+           whole point of the exercise is how much of the travel is unproductive. */
+        var lTrips = [];
+        var eTrips = [];
+        var lTravel = [];
+        var eTravel = [];
+        order.forEach(function (from, i) {
+          lTrips[i] = [];
+          eTrips[i] = [];
+          lTravel[i] = [];
+          eTravel[i] = [];
+          order.forEach(function (toId, j) {
+            var t = i === j ? 0 : loadedTrips(from, toId);
+            var e = empty[i][j];
+            var dl =
+              t > 0 ? tripDistance(grid, from, toId, "loaded", metric) : null;
+            var de = e > 0 ? tripDistance(grid, from, toId, "empty", metric) : null;
+            lTrips[i][j] = t;
+            eTrips[i][j] = e;
+            lTravel[i][j] = dl === null ? 0 : t * dl;
+            eTravel[i][j] = de === null ? 0 : e * de;
+          });
+        });
+
+        function sumRow(m, i) {
+          return m[i].reduce(function (a, b) {
+            return a + b;
+          }, 0);
+        }
+        function sumCol(m, j) {
+          var s = 0;
+          for (var i = 0; i < n; i++) s += m[i][j];
+          return s;
+        }
+        function ratio(travel, trips) {
+          return trips > 0 ? round0(travel / trips) : "—";
+        }
+
+        var thead = el("thead");
+        var head = el("tr");
+        head.appendChild(el("th", { class: "corner", text: "From / To" }));
+        order.forEach(function (id) {
+          head.appendChild(el("th", { text: id }));
+        });
+        ["Loaded", "Empty", "Total", "Average"].forEach(function (label) {
+          head.appendChild(el("th", { class: "total", text: label }));
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var tbody = el("tbody");
+        order.forEach(function (from, i) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: from }));
+          order.forEach(function (toId, j) {
+            var cell = el("td", { class: i === j ? "diag" : "" });
+            var box = el("div", { class: "cellbox" });
+            cell.appendChild(box);
+            if (lTravel[i][j] > 0) {
+              box.appendChild(
+                el("span", {
+                  class: "loaded",
+                  text: String(round0(lTravel[i][j])),
+                }),
+              );
+            }
+            if (eTravel[i][j] > 0) {
+              box.appendChild(
+                el("span", { class: "empty", text: String(round0(eTravel[i][j])) }),
+              );
+              cell.className = (i === j ? "diag " : "") + "hasempty";
+            }
+            tr.appendChild(cell);
+          });
+          var rl = sumRow(lTravel, i);
+          var re = sumRow(eTravel, i);
+          var rt = sumRow(lTrips, i) + sumRow(eTrips, i);
+          tr.appendChild(el("td", { class: "total", text: String(round0(rl)) }));
+          tr.appendChild(el("td", { class: "total", text: String(round0(re)) }));
+          tr.appendChild(
+            el("td", { class: "total", text: String(round0(rl + re)) }),
+          );
+          tr.appendChild(
+            el("td", { class: "total", text: String(ratio(rl + re, rt)) }),
+          );
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        var totalLoaded = 0;
+        var totalEmpty = 0;
+        var totalLTrips = 0;
+        var totalETrips = 0;
+        for (var i = 0; i < n; i++) {
+          totalLoaded += sumRow(lTravel, i);
+          totalEmpty += sumRow(eTravel, i);
+          totalLTrips += sumRow(lTrips, i);
+          totalETrips += sumRow(eTrips, i);
+        }
+
+        var tfoot = el("tfoot");
+        function footRow(label, valueFor, tail) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: label }));
+          for (var j = 0; j < n; j++) {
+            tr.appendChild(el("td", { class: "total", text: String(valueFor(j)) }));
+          }
+          tail.forEach(function (v) {
+            tr.appendChild(el("td", { class: "total grand", text: String(v) }));
+          });
+          return tr;
+        }
+        tfoot.appendChild(
+          footRow(
+            "Loaded",
+            function (j) {
+              return round0(sumCol(lTravel, j));
+            },
+            [round0(totalLoaded), "", "", ""],
+          ),
+        );
+        tfoot.appendChild(
+          footRow(
+            "Empty",
+            function (j) {
+              return round0(sumCol(eTravel, j));
+            },
+            ["", round0(totalEmpty), "", ""],
+          ),
+        );
+        tfoot.appendChild(
+          footRow(
+            "Total",
+            function (j) {
+              return round0(sumCol(lTravel, j) + sumCol(eTravel, j));
+            },
+            ["", "", round0(totalLoaded + totalEmpty), ""],
+          ),
+        );
+        tfoot.appendChild(
+          footRow(
+            "Average",
+            function (j) {
+              return ratio(
+                sumCol(lTravel, j) + sumCol(eTravel, j),
+                sumCol(lTrips, j) + sumCol(eTrips, j),
+              );
+            },
+            [
+              ratio(totalLoaded, totalLTrips),
+              ratio(totalEmpty, totalETrips),
+              ratio(totalLoaded + totalEmpty, totalLTrips + totalETrips),
+              "",
+            ],
+          ),
+        );
+        table.appendChild(tfoot);
+
+        /* Per center, both directions together: what it costs to have this center
+           where it is. */
+        var sHead = el("thead");
+        var sRow = el("tr");
+        sRow.appendChild(el("th", { class: "corner", text: "Entity" }));
+        order.forEach(function (id) {
+          sRow.appendChild(el("th", { text: id }));
+        });
+        sRow.appendChild(el("th", { class: "total", text: "Total" }));
+        sHead.appendChild(sRow);
+        summary.appendChild(sHead);
+
+        var sBody = el("tbody");
+        function summaryRow(label, valueFor, totalValue) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: label }));
+          order.forEach(function (id, i) {
+            tr.appendChild(el("td", { class: "total", text: String(valueFor(i)) }));
+          });
+          tr.appendChild(
+            el("td", { class: "total grand", text: String(totalValue) }),
+          );
+          return tr;
+        }
+        function flowOf(i) {
+          return (
+            sumRow(lTrips, i) +
+            sumRow(eTrips, i) +
+            sumCol(lTrips, i) +
+            sumCol(eTrips, i)
+          );
+        }
+        function travelOf(i) {
+          return (
+            sumRow(lTravel, i) +
+            sumRow(eTravel, i) +
+            sumCol(lTravel, i) +
+            sumCol(eTravel, i)
+          );
+        }
+        sBody.appendChild(
+          summaryRow("Total flow", flowOf, totalLTrips + totalETrips),
+        );
+        sBody.appendChild(
+          summaryRow(
+            "Total travel",
+            function (i) {
+              return round0(travelOf(i));
+            },
+            round0(totalLoaded + totalEmpty),
+          ),
+        );
+        sBody.appendChild(
+          summaryRow(
+            "Average travel",
+            function (i) {
+              return ratio(travelOf(i), flowOf(i));
+            },
+            ratio(totalLoaded + totalEmpty, totalLTrips + totalETrips),
+          ),
+        );
+        summary.appendChild(sBody);
+      }
+
       var distMetricSelect = document.getElementById("dist-metric");
       METRICS.forEach(function (m) {
         distMetricSelect.appendChild(el("option", { value: m, text: m }));
@@ -5336,6 +5609,7 @@
       distMetricSelect.addEventListener("change", function () {
         state.distMetric = distMetricSelect.value;
         renderDistance();
+        renderTravel();
       });
 
       document.getElementById("dist-all").addEventListener("change", function (ev) {
@@ -5548,7 +5822,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929012818";
+      window.__BUILD__ = "20260929013130";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
