@@ -1277,6 +1277,22 @@
         padding-top: 14px;
       }
 
+      footer.pagefoot p {
+        margin: 0 0 6px;
+      }
+
+      footer.pagefoot p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* The credit line carries names, so it reads at the page's own weight
+         rather than the muted grey of the note beneath it. */
+      footer.pagefoot .credit {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink-2);
+      }
+
       footer.pagefoot code {
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         background: var(--surface-2);
@@ -1833,9 +1849,14 @@
       </div>
 
       <footer class="pagefoot">
-        Interactive Layout Design and Evaluation — ISyE 6202 &amp; 6335 Supply Chain
-        Facilities, Prof. B. Montreuil. Every score on this page recomputes as the
-        layout is dragged; nothing has to be asked for.
+        <p class="credit">
+          Simulator developed by PhD student Yinzhu Quan and Prof. Benoit Montreuil
+        </p>
+        <p>
+          Interactive Layout Design and Evaluation — ISyE 6202 &amp; 6335 Supply
+          Chain Facilities, Georgia Institute of Technology. Every score on this
+          page recomputes as the layout is dragged; nothing has to be asked for.
+        </p>
       </footer>
     </div>
 
@@ -5859,7 +5880,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929132251";
+      window.__BUILD__ = "20260929134938";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
