@@ -282,10 +282,6 @@
       .flowtable.dist .cellbox {
         height: 32px;
       }
-      .graph-legend {
-        font-size: 11px;
-        color: var(--muted);
-      }
       .geo-tools select {
         font: inherit;
         font-size: 12px;
@@ -1697,19 +1693,30 @@
                   <option value="heat">Heatmap</option>
                 </select>
               </label>
-              <button id="graph-step" type="button"></button>
-              <span class="graph-legend" id="graph-legend"></span>
+              <span class="constraint-cell">
+                <input id="graph-prox" type="checkbox" checked />
+                Proximities
+              </span>
+              <span class="constraint-cell">
+                <input id="graph-loaded" type="checkbox" checked />
+                Loaded
+              </span>
+              <span class="constraint-cell">
+                <input id="graph-empty" type="checkbox" />
+                Empty
+              </span>
             </div>
           </div>
 
           <p class="scale-lede">
             The same picture the course builds up a layer at a time: the desired
-            proximities first, then the traffic that actually runs over them. Use
-            the button to add one layer at a time. Each route follows the same aisle
-            path its distance was measured along, so nothing here crosses a block
-            &mdash; a vehicle goes round, exactly as it would on the floor. Arrow
-            width is proportional to trips per period. The heatmap adds the traffic
-            up aisle by aisle instead, which is where congestion shows.
+            proximities the layout was designed around, and the traffic that
+            actually runs over them. The three layers are independent \u2014 turn on
+            whichever combination you want to look at. Each route follows the same
+            aisle path its distance was measured along, so nothing here crosses a
+            block &mdash; a vehicle goes round, exactly as it would on the floor.
+            Arrow width is proportional to trips per period. The heatmap adds the
+            traffic up aisle by aisle instead, which is where congestion shows.
           </p>
 
           <div class="paper geo-paper" id="flow-graph"></div>
@@ -2014,7 +2021,9 @@
         distMetric: "Aisle",
         distAll: false,
         graphView: "arrows",
-        graphStep: 0,
+        graphProx: true,
+        graphLoaded: true,
+        graphEmpty: false,
       };
 
       function cloneLayout0() {
@@ -4979,7 +4988,7 @@
             var b = centerById(toId);
             if (!b || i === j) return;
             var loaded = loadedTrips(fromId, toId);
-            if (state.graphStep >= 2 && loaded > 0 && a.O && b.I) {
+            if (state.graphLoaded && loaded > 0 && a.O && b.I) {
               routes.push({
                 kind: "loaded",
                 trips: loaded,
@@ -4988,7 +4997,7 @@
               });
             }
             var e = empty[i][j];
-            if (state.graphStep >= 3 && e > 0 && a.I && b.O) {
+            if (state.graphEmpty && e > 0 && a.I && b.O) {
               routes.push({
                 kind: "empty",
                 trips: e,
@@ -5090,9 +5099,9 @@
             .appendChild(document.createTextNode(c.id));
         });
 
-        /* Layer 1 is the desired proximities from page one, in the course's own
-           colours; the traffic goes on top of them. */
-        if (state.graphStep >= 1) drawRelationships(svg);
+        /* The desired proximities from page one, in the course's own colours.
+           They go under the traffic, which is what runs over them. */
+        if (state.graphProx) drawRelationships(svg);
 
         if (state.graphView === "arrows") {
           traced.forEach(function (t) {
@@ -5209,32 +5218,18 @@
         state.graphView = graphViewSelect.value;
         renderFlowGraph();
       });
-      var GRAPH_STEPS = [
-        { button: "Show proximities", legend: "Net layout only" },
-        {
-          button: "Add loaded flows",
-          legend:
-            "Desired proximities \u2014 colour is the class, width the importance",
-        },
-        {
-          button: "Add empty flows",
-          legend: "\u002b loaded trips, width proportional to trips per period",
-        },
-        { button: "Start over", legend: "\u002b empty trips, in the paler shade" },
-      ];
-
-      function paintGraphStep() {
-        var step = GRAPH_STEPS[state.graphStep] || GRAPH_STEPS[0];
-        document.getElementById("graph-step").textContent = step.button;
-        document.getElementById("graph-legend").textContent = step.legend;
-      }
-
-      document.getElementById("graph-step").addEventListener("click", function () {
-        state.graphStep = (state.graphStep + 1) % GRAPH_STEPS.length;
-        paintGraphStep();
-        renderFlowGraph();
+      [
+        ["graph-prox", "graphProx"],
+        ["graph-loaded", "graphLoaded"],
+        ["graph-empty", "graphEmpty"],
+      ].forEach(function (pair) {
+        var box = document.getElementById(pair[0]);
+        box.checked = state[pair[1]];
+        box.addEventListener("change", function () {
+          state[pair[1]] = box.checked;
+          renderFlowGraph();
+        });
       });
-      paintGraphStep();
 
       /* ------------------------------------------------------------------
          Distance matrix (slide 13)
@@ -5545,7 +5540,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929011344";
+      window.__BUILD__ = "20260929012259";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
