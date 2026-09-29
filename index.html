@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
-    <meta name="description" content="Proximity-Based Layout Evaluator: declare qualitative proximity relationships between centers, lay the centers out, and score the layout against them, with flow, distance and travel matrices." />
+    <meta name="description" content="Interactive Layout Design and Evaluation: declare qualitative proximity relationships between centers, lay the centers out, and evaluate the layout on both the relationships and the travel its flows generate." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%220.9em%22%20x%3D%2250%25%22%20text-anchor%3D%22middle%22%20font-size%3D%2290%22%3E%F0%9F%93%90%3C%2Ftext%3E%3C%2Fsvg%3E" />
-    <title>Proximity-Based Layout Evaluator</title>
+    <title>Interactive Layout Design and Evaluation</title>
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap"
@@ -1287,13 +1287,12 @@
     <div class="wrap">
       <header>
         <p class="eyebrow">ISyE 6202 · 6335 — Facilities Layout</p>
-        <h1>Proximity-Based Layout Evaluator</h1>
+        <h1>Interactive Layout Design and Evaluation</h1>
         <p class="lede">
-          Declare the qualitative proximity relationships between centers, lay the
-          centers out, and see what the layout scores against them. Importance sets
-          the weight and the drawn line width; desired proximity sets the drawn
-          colour. A second tab carries the flow, distance and travel matrices.
-          Loaded with the Layout&nbsp;0 case throughout.
+          Design a layout and evaluate it two ways: against the qualitative
+          proximity relationships it was meant to honour, and against the travel its
+          flows actually generate. Drag the centers and every score follows on the
+          spot. Loaded with the Layout&nbsp;0 case throughout.
         </p>
         <p class="cite">
           Relationship model: Evans, G.W., M.R. Wilhelm &amp; W. Karwowski (1987),
@@ -1653,7 +1652,7 @@
       <div class="tabpanel" id="tab-flow" role="tabpanel" hidden>
         <section class="panel flow">
           <div class="scale-head">
-            <h2>Flow estimation matrix</h2>
+            <h2>Loaded flow estimation matrix</h2>
             <div class="geo-tools">
               <span class="constraint-cell">
                 <input id="show-empty" type="checkbox" checked />
@@ -1801,9 +1800,9 @@
       </div>
 
       <footer class="pagefoot">
-        Proximity-Based Layout Evaluator — ISyE 6202 · 6335 Supply Chain Facilities,
-        Prof. B. Montreuil. Every score on this page recomputes as the layout is
-        dragged; nothing has to be asked for.
+        Interactive Layout Design and Evaluation — ISyE 6202 · 6335 Supply Chain
+        Facilities, Prof. B. Montreuil. Every score on this page recomputes as the
+        layout is dragged; nothing has to be asked for.
       </footer>
     </div>
 
@@ -4519,7 +4518,7 @@
       });
 
       /* ------------------------------------------------------------------
-         Flow estimation matrix
+         Loaded flow estimation matrix
 
          Loaded trips are the input. Empty trips are solved for: a vehicle that
          has just unloaded stands at a center's input station and has to reach the
@@ -5824,7 +5823,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929123612";
+      window.__BUILD__ = "20260929123748";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
