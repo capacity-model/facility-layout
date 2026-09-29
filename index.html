@@ -268,6 +268,29 @@
         background: var(--surface-2);
       }
 
+      .flowtable .loaded {
+        display: block;
+        width: 100%;
+        text-align: center;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      .flowtable.dist td {
+        cursor: default;
+      }
+      .flowtable.dist .cellbox {
+        height: 32px;
+      }
+      .geo-tools select {
+        font: inherit;
+        font-size: 12px;
+        padding: 2px 6px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--surface);
+        color: var(--ink);
+      }
       .flowtable td.hasempty {
         background: var(--warn-soft);
       }
@@ -1658,6 +1681,45 @@
             within the same center.
           </p>
         </section>
+
+        <section class="panel flow">
+          <div class="scale-head">
+            <h2>Distance matrix</h2>
+            <div class="geo-tools">
+              <label class="constraint-cell">
+                Metric
+                <select id="dist-metric"></select>
+              </label>
+              <span class="constraint-cell">
+                <input id="dist-all" type="checkbox" />
+                Show every pair
+              </span>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            How far each of those trips actually travels. Nothing here is typed in
+            &mdash; every figure is measured on the layout above, so moving a center
+            or sliding a station changes this table at once. A cell carries a figure
+            only where the matrix above runs trips; tick <em>Show every pair</em> to
+            measure the whole grid.
+          </p>
+
+          <div class="scalewrap">
+            <table class="flowtable dist" id="dist-grid"></table>
+          </div>
+
+          <p class="note">
+            The two entries in a cell are measured between different points. A
+            loaded trip leaves the source center's <em>output</em> station and ends
+            at the destination's <em>input</em> station. An empty trip does the
+            reverse &mdash; it starts where the vehicle just unloaded, the source's
+            <em>input</em> station, and ends where it picks up next, the
+            destination's <em>output</em> station. On the diagonal the vehicle
+            crosses its own center from input dock to output dock, so that leg is
+            measured straight through the block rather than around it.
+          </p>
+        </section>
       </div>
 
       <footer class="pagefoot">
@@ -1916,6 +1978,8 @@
         showLines: true,
         flow: {},
         showEmpty: true,
+        distMetric: "Aisle",
+        distAll: false,
       };
 
       function cloneLayout0() {
@@ -4795,7 +4859,116 @@
         } else {
           box.hidden = true;
         }
+
+        /* The distances below answer the same set of trips, so they follow the
+           flow table rather than keeping their own trigger. Geometry changes
+           reach them when the tab is opened. */
+        renderDistance();
       }
+
+      /* ------------------------------------------------------------------
+         Distance matrix (slide 13)
+         ------------------------------------------------------------------ */
+
+      /* The distance one trip covers. A loaded trip runs output -> input; an
+         empty one runs input -> output, because the vehicle is standing at the
+         dock where it just unloaded. Returns null when either station is
+         missing or the two are walled off from each other. */
+      function tripDistance(grid, fromId, toId, kind, metric) {
+        var a = centerById(fromId);
+        var b = centerById(toId);
+        if (!a || !b) return null;
+        var sa = stationAt(a, kind === "loaded" ? a.O : a.I);
+        var sb = stationAt(b, kind === "loaded" ? b.I : b.O);
+        if (!sa || !sb) return null;
+        /* Unload and reload inside one center: the vehicle drives across the
+           block, which the aisle grid treats as impassable, so measure it
+           straight through. */
+        if (fromId === toId) {
+          return Math.abs(sb.x - sa.x) + Math.abs(sb.y - sa.y);
+        }
+        if (metric !== "Aisle") return metricBetween(sa, sb, metric, grid);
+        return aisleDistance(
+          grid,
+          { x: sa.x + sa.nx * CELL, y: sa.y + sa.ny * CELL },
+          { x: sb.x + sb.nx * CELL, y: sb.y + sb.ny * CELL },
+        );
+      }
+
+      function renderDistance() {
+        var table = document.getElementById("dist-grid");
+        if (!table) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+
+        var order = flowOrder();
+        var n = order.length;
+        var empty = solveEmpty(order).empty;
+        var grid = buildGrid();
+        var metric = state.distMetric;
+        var all = state.distAll;
+
+        var thead = el("thead");
+        var headRow = el("tr");
+        headRow.appendChild(el("th", { class: "corner", text: "From / To" }));
+        order.forEach(function (id) {
+          headRow.appendChild(el("th", { text: id }));
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        var tbody = el("tbody");
+        order.forEach(function (from, i) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: from }));
+          order.forEach(function (toId, j) {
+            var cell = el("td", { class: i === j ? "diag" : "" });
+            var box = el("div", { class: "cellbox" });
+            cell.appendChild(box);
+
+            var trips = i === j ? 0 : loadedTrips(from, toId);
+            var e = empty[i][j];
+
+            if (all || trips > 0) {
+              if (i !== j) {
+                var dl = tripDistance(grid, from, toId, "loaded", metric);
+                box.appendChild(
+                  el("span", { class: "loaded", text: fmtDistance(dl) }),
+                );
+              }
+            }
+            if (all || e > 0) {
+              var de = tripDistance(grid, from, toId, "empty", metric);
+              box.appendChild(
+                el("span", { class: "empty", text: fmtDistance(de) }),
+              );
+              if (e > 0) cell.className = (i === j ? "diag " : "") + "hasempty";
+            }
+            tr.appendChild(cell);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+
+      function fmtDistance(d) {
+        if (d === null || d === undefined || !isFinite(d)) return "\u2014";
+        return String(Math.round(d));
+      }
+
+      var distMetricSelect = document.getElementById("dist-metric");
+      METRICS.forEach(function (m) {
+        distMetricSelect.appendChild(el("option", { value: m, text: m }));
+      });
+      distMetricSelect.value = state.distMetric;
+      distMetricSelect.addEventListener("change", function () {
+        state.distMetric = distMetricSelect.value;
+        renderDistance();
+      });
+
+      document.getElementById("dist-all").addEventListener("change", function (ev) {
+        state.distAll = ev.target.checked;
+        renderDistance();
+      });
 
       document.getElementById("reset-flow").addEventListener("click", function () {
         state.flow = {};
@@ -5002,7 +5175,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929003748";
+      window.__BUILD__ = "20260929004947";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
