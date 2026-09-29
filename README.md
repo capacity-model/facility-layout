@@ -16,7 +16,7 @@ An interactive tool for designing a facility layout and evaluating it two ways: 
 
 ### Flow and travel
 
-- **Loaded flow estimation matrix** — loaded trips per period between centers. Empty trips are solved, not typed: a minimum-cost flow balances every center's arrivals against its departures at the least total empty travel.
+- **Flow estimation matrix** — loaded trips per period between centers, the ones you type shown in green because they are the only figures here that are not computed. Empty trips are solved, not typed: a minimum-cost flow balances every center's arrivals against its departures at the least total empty travel.
 - **Distance matrix** — measured on the layout, loaded trips from output station to input station and empty trips the other way round, along aisle shortest paths over the free space between blocks.
 - **Flow graph and heatmap** — every trip drawn along the aisle route its distance was measured on, with independent layers for proximities, loaded trips and empty trips; the heatmap sums traffic per aisle cell.
 - **Travel evaluation** — trips times distance, loaded and empty kept apart through every margin, plus total flow, total travel and average travel per center.
