@@ -823,6 +823,66 @@
 
       /* ---------- legend ---------- */
 
+      .relview-body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(250px, 340px);
+        gap: var(--gap);
+        align-items: start;
+      }
+
+      @media (max-width: 900px) {
+        .relview-body {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .relfilters section + section {
+        margin-top: 16px;
+      }
+
+      .relfilters h3 {
+        margin: 0 0 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .drawncount {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        letter-spacing: 0;
+        text-transform: none;
+        font-weight: 500;
+      }
+
+      /* Each legend row is its own switch, so the key and the control are one
+         thing rather than two lists to keep in step. */
+      .legend-row.switch {
+        grid-template-columns: auto 1fr 86px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .legend-row.switch input {
+        margin: 0;
+        accent-color: var(--accent);
+      }
+
+      .legend-row.switch.off .label,
+      .legend-row.switch.off svg {
+        opacity: 0.38;
+      }
+
+      .legend-row .count {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
       .legend {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
@@ -1353,13 +1413,23 @@
       <nav class="tabs" role="tablist">
         <button
           class="tab current"
-          id="tab-btn-proximity"
+          id="tab-btn-layout"
           type="button"
           role="tab"
           aria-selected="true"
+          aria-controls="tab-layout"
+        >
+          Layout
+        </button>
+        <button
+          class="tab"
+          id="tab-btn-proximity"
+          type="button"
+          role="tab"
+          aria-selected="false"
           aria-controls="tab-proximity"
         >
-          Proximity relationships
+          Proximity scoring
         </button>
         <button
           class="tab"
@@ -1369,106 +1439,14 @@
           aria-selected="false"
           aria-controls="tab-flow"
         >
-          Flow &amp; travel
+          Flow travel scoring
         </button>
       </nav>
 
-      <div class="tabpanel" id="tab-proximity" role="tabpanel">
-        <div class="toolbar">
-          <button class="primary" id="add">Add relationship</button>
-          <button id="copy-json">Copy JSON</button>
-          <button id="copy-csv">Copy CSV</button>
-          <button id="reset">Reset to Layout 0</button>
-          <span class="toolbar-note" id="toolbar-note"></span>
-        </div>
-
-        <div class="issues" id="issues" hidden></div>
-
-        <div class="tablewrap">
-          <table id="grid">
-            <thead>
-              <tr class="group">
-                <th class="spacer" colspan="1"></th>
-                <th colspan="2">Pair of centers</th>
-                <th colspan="3" class="rule-left">Proximity relationship</th>
-                <th colspan="2" class="rule-left">Measure</th>
-                <th class="rule-left">Importance</th>
-                <th class="rule-left">Drawn as</th>
-                <th class="spacer"></th>
-              </tr>
-              <tr>
-                <th></th>
-                <th>Center 1</th>
-                <th>Center 2</th>
-                <th class="rule-left">Importance</th>
-                <th>Desired proximity</th>
-                <th>Reason</th>
-                <th class="rule-left">Between</th>
-                <th>Distance metric</th>
-                <th class="rule-left">weight</th>
-                <th class="rule-left">colour · width</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="rows"></tbody>
-            <tfoot>
-              <tr>
-                <td colspan="8">Maximum possible value</td>
-                <td class="total rule-left" id="max-value">0</td>
-                <td colspan="2"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <dl class="stats">
-          <div class="stat">
-            <dt>Relationships</dt>
-            <dd id="s-total">0</dd>
-          </div>
-          <div class="stat">
-            <dt>Scored</dt>
-            <dd id="s-scored">0</dd>
-          </div>
-          <div class="stat">
-            <dt>Vital constraints</dt>
-            <dd id="s-vital">0</dd>
-          </div>
-          <div class="stat">
-            <dt>Maximum possible value</dt>
-            <dd id="s-max">0</dd>
-          </div>
-        </dl>
-
-        <div class="legend">
-          <section class="panel">
-            <h2>Desired proximity → colour</h2>
-            <div id="legend-colour"></div>
-            <p class="note">
-              Colour states what the relationship <em>asks for</em>, not whether the
-              layout delivers it. “Not far” is the same orange as “far”, drawn
-              dotted.
-            </p>
-          </section>
-
-          <section class="panel">
-            <h2>Importance → line width &amp; weight</h2>
-            <div id="legend-width"></div>
-            <p class="note">
-              Weights step by powers of four, so one critical relationship outranks
-              sixty-three desirable ones. Vital relationships carry no weight — they
-              are feasibility constraints, drawn at width 18 with a white X.
-            </p>
-          </section>
-        </div>
-
+      <div class="tabpanel" id="tab-layout" role="tabpanel">
         <section class="panel geo">
           <div class="scale-head">
             <h2>Layout geometry</h2>
-            <span class="constraint-cell">
-              <input id="show-lines" type="checkbox" checked />
-              Show relationships
-            </span>
             <button id="reset-geo" type="button">Reset to Layout 0</button>
           </div>
 
@@ -1509,116 +1487,10 @@
             </table>
           </div>
         </section>
+      </div>
 
-        <section class="panel eval">
-          <div class="scale-head">
-            <h2>Layout evaluation</h2>
-            <span class="eval-note" id="eval-note"></span>
-          </div>
-
-          <dl class="stats">
-            <div class="stat">
-              <dt>Maximum possible value</dt>
-              <dd id="ev-max">0</dd>
-            </div>
-            <div class="stat">
-              <dt>Design value</dt>
-              <dd id="ev-value">0</dd>
-            </div>
-            <div class="stat">
-              <dt>Design score</dt>
-              <dd id="ev-score">0%</dd>
-            </div>
-          </dl>
-
-          <div class="scalewrap">
-            <table class="evaltable">
-              <thead>
-                <tr class="group">
-                  <th colspan="2">Pair of centers</th>
-                  <th colspan="3" class="rule-left">Proximity relationship</th>
-                  <th colspan="2" class="rule-left">Measure</th>
-                  <th class="rule-left">Importance</th>
-                  <th colspan="3" class="rule-left">Design evaluation</th>
-                </tr>
-                <tr>
-                  <th>Center 1</th>
-                  <th>Center 2</th>
-                  <th class="rule-left">Importance</th>
-                  <th>Desired proximity</th>
-                  <th>Reason</th>
-                  <th class="rule-left">Between</th>
-                  <th>Distance metric</th>
-                  <th class="rule-left">weight</th>
-                  <th class="rule-left" style="text-align: right">Distance</th>
-                  <th style="text-align: right">Satisfaction</th>
-                  <th style="text-align: right">Contribution</th>
-                </tr>
-              </thead>
-              <tbody id="eval-rows"></tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="7">Maximum possible value</td>
-                  <td class="total rule-left" id="ev-max-cell">0</td>
-                  <td colspan="2">Design value</td>
-                  <td class="total" id="ev-value-cell">0</td>
-                </tr>
-                <tr class="score">
-                  <td colspan="8"></td>
-                  <td colspan="2">Design score</td>
-                  <td class="total" id="ev-score-cell">0%</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </section>
-
-        <section class="panel curves">
-          <div class="scale-head">
-            <h2>Satisfaction curves</h2>
-            <button id="reset-curves" type="button">Reset to default curves</button>
-          </div>
-
-          <p class="scale-lede">
-            One curve per desired proximity. Read a relationship's desired proximity
-            from the table, take its measured distance along the bottom, and the
-            curve gives the satisfaction that multiplies its weight. Adjacent
-            through Not far fall as distance grows; Far and Very far rise. The dots
-            are the distances and satisfactions the course case reports — a curve
-            that misses them will not reproduce Layout 0's score.
-          </p>
-
-          <div class="paper" id="chart-paper">
-            <div class="curve-legend" id="curve-legend"></div>
-            <div id="chart"></div>
-          </div>
-
-          <div class="scalewrap">
-            <table class="curvetable">
-              <thead>
-                <tr>
-                  <th>Desired proximity</th>
-                  <th>Form</th>
-                  <th>Parameters (meters)</th>
-                  <th>Drawn as</th>
-                </tr>
-              </thead>
-              <tbody id="curve-rows"></tbody>
-            </table>
-          </div>
-
-          <p class="note">
-            A <strong>ramp</strong> runs between the distance where satisfaction is
-            1 and the distance where it is 0; <em>bend</em> curves it — 1 is a
-            straight line, above 1 drops off faster at first, below 1 holds on
-            longer. A <strong>bell</strong> peaks at its ideal distance and falls
-            away on both sides, reaching half satisfaction one half-width out; it is
-            the only form that can say &ldquo;not too far, not too near&rdquo;,
-            where closer is not always better. The axis runs to
-            <span id="axis-label">30</span>&nbsp;m — raise it for a larger facility.
-          </p>
-        </section>
-
+      <div class="tabpanel" id="tab-proximity" role="tabpanel" hidden>
+        hidden
         <section class="panel scale">
           <div class="scale-head">
             <h2>Importance scale</h2>
@@ -1693,6 +1565,216 @@
           </form>
 
           <p class="scale-msg" id="scale-msg"></p>
+        </section>
+
+        <section class="panel curves">
+          <div class="scale-head">
+            <h2>Satisfaction curves</h2>
+            <button id="reset-curves" type="button">Reset to default curves</button>
+          </div>
+
+          <p class="scale-lede">
+            One curve per desired proximity. Read a relationship's desired proximity
+            from the table, take its measured distance along the bottom, and the
+            curve gives the satisfaction that multiplies its weight. Adjacent
+            through Not far fall as distance grows; Far and Very far rise. The dots
+            are the distances and satisfactions the course case reports — a curve
+            that misses them will not reproduce Layout 0's score.
+          </p>
+
+          <div class="paper" id="chart-paper">
+            <div class="curve-legend" id="curve-legend"></div>
+            <div id="chart"></div>
+          </div>
+
+          <div class="scalewrap">
+            <table class="curvetable">
+              <thead>
+                <tr>
+                  <th>Desired proximity</th>
+                  <th>Form</th>
+                  <th>Parameters (meters)</th>
+                  <th>Drawn as</th>
+                </tr>
+              </thead>
+              <tbody id="curve-rows"></tbody>
+            </table>
+          </div>
+
+          <p class="note">
+            A <strong>ramp</strong> runs between the distance where satisfaction is
+            1 and the distance where it is 0; <em>bend</em> curves it — 1 is a
+            straight line, above 1 drops off faster at first, below 1 holds on
+            longer. A <strong>bell</strong> peaks at its ideal distance and falls
+            away on both sides, reaching half satisfaction one half-width out; it is
+            the only form that can say &ldquo;not too far, not too near&rdquo;,
+            where closer is not always better. The axis runs to
+            <span id="axis-label">30</span>&nbsp;m — raise it for a larger facility.
+          </p>
+        </section>
+
+        <section class="panel relview">
+          <div class="scale-head">
+            <h2>Relationships on the layout</h2>
+            <div class="geo-tools">
+              <button id="rel-all" type="button">Show all</button>
+              <button id="rel-none" type="button">Hide all</button>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            The layout from the first section, with the declared relationships drawn
+            over it &mdash; colour is the desired proximity, width the importance.
+            Twenty-one lines at once say little, so each class below is a switch:
+            turn everything off but the critical relationships and the compromises
+            in the layout are there to read. The drawing follows the first section;
+            to change the layout, go back and drag it there.
+          </p>
+
+          <div class="relview-body">
+            <div class="paper geo-paper"><div id="rel-layout"></div></div>
+            <div class="relfilters">
+              <section>
+                <h3>
+                  Desired proximity <span class="drawncount" id="prox-drawn"></span>
+                </h3>
+                <div id="legend-colour"></div>
+              </section>
+              <section>
+                <h3>Importance <span class="drawncount" id="imp-drawn"></span></h3>
+                <div id="legend-width"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <div class="toolbar">
+          <button class="primary" id="add">Add relationship</button>
+          <button id="copy-json">Copy JSON</button>
+          <button id="copy-csv">Copy CSV</button>
+          <button id="reset">Reset to Layout 0</button>
+          <span class="toolbar-note" id="toolbar-note"></span>
+        </div>
+
+        <div class="issues" id="issues" hidden></div>
+
+        <div class="tablewrap">
+          <table id="grid">
+            <thead>
+              <tr class="group">
+                <th class="spacer" colspan="1"></th>
+                <th colspan="2">Pair of centers</th>
+                <th colspan="3" class="rule-left">Proximity relationship</th>
+                <th colspan="2" class="rule-left">Measure</th>
+                <th class="rule-left">Importance</th>
+                <th class="rule-left">Drawn as</th>
+                <th class="spacer"></th>
+              </tr>
+              <tr>
+                <th></th>
+                <th>Center 1</th>
+                <th>Center 2</th>
+                <th class="rule-left">Importance</th>
+                <th>Desired proximity</th>
+                <th>Reason</th>
+                <th class="rule-left">Between</th>
+                <th>Distance metric</th>
+                <th class="rule-left">weight</th>
+                <th class="rule-left">colour · width</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+            <tfoot>
+              <tr>
+                <td colspan="8">Maximum possible value</td>
+                <td class="total rule-left" id="max-value">0</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <dl class="stats">
+          <div class="stat">
+            <dt>Relationships</dt>
+            <dd id="s-total">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Scored</dt>
+            <dd id="s-scored">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Vital constraints</dt>
+            <dd id="s-vital">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Maximum possible value</dt>
+            <dd id="s-max">0</dd>
+          </div>
+        </dl>
+
+        <section class="panel eval">
+          <div class="scale-head">
+            <h2>Layout evaluation</h2>
+            <span class="eval-note" id="eval-note"></span>
+          </div>
+
+          <dl class="stats">
+            <div class="stat">
+              <dt>Maximum possible value</dt>
+              <dd id="ev-max">0</dd>
+            </div>
+            <div class="stat">
+              <dt>Design value</dt>
+              <dd id="ev-value">0</dd>
+            </div>
+            <div class="stat">
+              <dt>Design score</dt>
+              <dd id="ev-score">0%</dd>
+            </div>
+          </dl>
+
+          <div class="scalewrap">
+            <table class="evaltable">
+              <thead>
+                <tr class="group">
+                  <th colspan="2">Pair of centers</th>
+                  <th colspan="3" class="rule-left">Proximity relationship</th>
+                  <th colspan="2" class="rule-left">Measure</th>
+                  <th class="rule-left">Importance</th>
+                  <th colspan="3" class="rule-left">Design evaluation</th>
+                </tr>
+                <tr>
+                  <th>Center 1</th>
+                  <th>Center 2</th>
+                  <th class="rule-left">Importance</th>
+                  <th>Desired proximity</th>
+                  <th>Reason</th>
+                  <th class="rule-left">Between</th>
+                  <th>Distance metric</th>
+                  <th class="rule-left">weight</th>
+                  <th class="rule-left" style="text-align: right">Distance</th>
+                  <th style="text-align: right">Satisfaction</th>
+                  <th style="text-align: right">Contribution</th>
+                </tr>
+              </thead>
+              <tbody id="eval-rows"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="7">Maximum possible value</td>
+                  <td class="total rule-left" id="ev-max-cell">0</td>
+                  <td colspan="2">Design value</td>
+                  <td class="total" id="ev-value-cell">0</td>
+                </tr>
+                <tr class="score">
+                  <td colspan="8"></td>
+                  <td colspan="2">Design score</td>
+                  <td class="total" id="ev-score-cell">0%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </section>
       </div>
 
@@ -2106,11 +2188,12 @@
         building: { w: 50, h: 45 },
         centers: [],
         snap: 0.5,
-        showLines: true,
         flow: {},
         showEmpty: true,
         distMetric: "Aisle",
         distAll: false,
+        showProx: {},
+        showImp: {},
         graphView: "arrows",
         graphProx: true,
         graphLoaded: true,
@@ -2787,6 +2870,7 @@
       }
 
       function render() {
+        renderRelationshipView();
         var tbody = document.getElementById("rows");
         var summary = document.getElementById("eval-rows");
         while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
@@ -2802,51 +2886,129 @@
          Legend panels
          ------------------------------------------------------------------ */
 
+      /* How many declared relationships fall in each class, so a switch says what
+         turning it off would cost before it is turned off. */
+      function classCounts() {
+        var byProx = {};
+        var byImp = {};
+        state.rows.forEach(function (row) {
+          byProx[row.proximity] = (byProx[row.proximity] || 0) + 1;
+          byImp[row.importance] = (byImp[row.importance] || 0) + 1;
+        });
+        return { prox: byProx, imp: byImp };
+      }
+
+      function switchRow(name, count, swatch, group) {
+        var on = state[group][name] !== false;
+        var box = el("input", { type: "checkbox" });
+        box.checked = on;
+        var row = el("label", { class: "legend-row switch" + (on ? "" : " off") }, [
+          box,
+          el("div", { class: "label" }, [
+            el("span", { text: name }),
+            el("span", { class: "count", text: count ? count + "×" : "—" }),
+          ]),
+          swatch,
+        ]);
+        box.addEventListener("change", function () {
+          state[group][name] = box.checked;
+          saveFilters();
+          buildLegend();
+          renderRelationshipView();
+          renderFlowGraph();
+        });
+        return row;
+      }
+
       function buildLegend() {
+        var counts = classCounts();
+
         var colourBox = document.getElementById("legend-colour");
+        while (colourBox.firstChild) colourBox.removeChild(colourBox.firstChild);
         PROXIMITY.forEach(function (prox) {
           var swatch = el("div");
           drawStyle(swatch, "Very important", prox.name);
           colourBox.appendChild(
-            el("div", { class: "legend-row" }, [
-              el("div", { class: "label" }, [
-                el("span", { text: prox.name }),
-                el("span", {
-                  class: "meta",
-                  text: prox.dashed ? "dotted" : "solid",
-                }),
-              ]),
-              swatch,
-            ]),
+            switchRow(prox.name, counts.prox[prox.name] || 0, swatch, "showProx"),
           );
         });
 
-        buildWidthLegend();
+        buildWidthLegend(counts);
+        paintDrawnCounts(counts);
       }
 
-      function buildWidthLegend() {
+      function buildWidthLegend(counts) {
+        counts = counts || classCounts();
         var widthBox = document.getElementById("legend-width");
         while (widthBox.firstChild) widthBox.removeChild(widthBox.firstChild);
         state.levels.forEach(function (imp) {
           var swatch = el("div");
           drawStyle(swatch, imp.name, "Adjacent");
           widthBox.appendChild(
-            el("div", { class: "legend-row" }, [
-              el("div", { class: "label" }, [
-                el("span", { text: imp.name }),
-                el("span", {
-                  class: "meta",
-                  text:
-                    "w " +
-                    imp.width +
-                    " · " +
-                    (imp.weight === null ? "—" : imp.weight),
-                }),
-              ]),
-              swatch,
-            ]),
+            switchRow(imp.name, counts.imp[imp.name] || 0, swatch, "showImp"),
           );
         });
+      }
+
+      function drawnCount() {
+        var n = 0;
+        state.rows.forEach(function (row) {
+          if (state.showProx[row.proximity] === false) return;
+          if (state.showImp[row.importance] === false) return;
+          n++;
+        });
+        return n;
+      }
+
+      function paintDrawnCounts() {
+        var shown = drawnCount();
+        var total = state.rows.length;
+        var text = shown + " of " + total + " drawn";
+        ["prox-drawn", "imp-drawn"].forEach(function (id) {
+          var node = document.getElementById(id);
+          if (node) node.textContent = text;
+        });
+      }
+
+      var FILTER_KEY = "isye6202.proximity.filters.v1";
+
+      function saveFilters() {
+        try {
+          window.localStorage.setItem(
+            FILTER_KEY,
+            JSON.stringify({ prox: state.showProx, imp: state.showImp }),
+          );
+        } catch (err) {
+          /* blocked storage — the switches simply do not persist */
+        }
+      }
+
+      function loadFilters() {
+        try {
+          var raw = window.localStorage.getItem(FILTER_KEY);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+              state.showProx = parsed.prox || {};
+              state.showImp = parsed.imp || {};
+            }
+          }
+        } catch (err) {
+          /* blocked storage — every class starts on */
+        }
+      }
+
+      function setAllFilters(on) {
+        PROXIMITY.forEach(function (p) {
+          state.showProx[p.name] = on;
+        });
+        state.levels.forEach(function (l) {
+          state.showImp[l.name] = on;
+        });
+        saveFilters();
+        buildLegend();
+        renderRelationshipView();
+        renderFlowGraph();
       }
 
       /* ------------------------------------------------------------------
@@ -3361,6 +3523,11 @@
         var layer = svgEl("g", { "pointer-events": "none" });
 
         state.rows.forEach(function (row) {
+          /* The two switch groups in the proximity section decide what is drawn.
+             An unknown class counts as on, so a level someone has just invented
+             appears rather than silently vanishing. */
+          if (state.showProx[row.proximity] === false) return;
+          if (state.showImp[row.importance] === false) return;
           var prox = proximityOf(row.proximity);
           var imp = importanceOf(row.importance);
           var constraint = imp.weight === null;
@@ -3476,6 +3643,104 @@
 
       var GEO_PAD = 4;
 
+      /* The same layout as the first section, drawn read-only so the proximity
+         section can carry the relationship lines without a second editable copy
+         of the geometry. Editing stays in one place. */
+      function renderRelationshipView() {
+        var host = document.getElementById("rel-layout");
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        var used = stationUsage();
+        var B = state.building;
+        var svg = svgEl("svg", {
+          viewBox:
+            -GEO_PAD +
+            " " +
+            -GEO_PAD +
+            " " +
+            (B.w + GEO_PAD * 2) +
+            " " +
+            (B.h + GEO_PAD * 2),
+          role: "img",
+          "aria-label":
+            "The layout with the declared proximity relationships drawn over it",
+        });
+        svg.appendChild(
+          svgEl("rect", {
+            x: -GEO_PAD,
+            y: -GEO_PAD,
+            width: B.w + GEO_PAD * 2,
+            height: B.h + GEO_PAD * 2,
+            fill: PAPER_BG,
+          }),
+        );
+        svg.appendChild(
+          svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: B.w,
+            height: B.h,
+            fill: "#ffffff",
+            stroke: PAPER_INK,
+            "stroke-width": 2,
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+
+        state.centers.forEach(function (c) {
+          svg.appendChild(
+            svgEl("rect", {
+              x: c.x,
+              y: c.y,
+              width: c.w,
+              height: c.h,
+              fill: KIND_FILL[c.kind] || KIND_FILL.process,
+              stroke: PAPER_INK,
+              "stroke-width": 1.5,
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+          var label = svgEl("text", {
+            x: c.x + 1.2,
+            y: c.y + 3.4,
+            fill: PAPER_INK,
+            "font-size": 2.8,
+            "font-weight": 700,
+          });
+          label.textContent = c.id;
+          svg.appendChild(label);
+
+          ["I", "O"].forEach(function (role) {
+            if (!c[role] || !used[c.id + ":" + role]) return;
+            var at = stationAt(c, c[role]);
+            var dx = role === "I" ? -at.nx : at.nx;
+            var dy = role === "I" ? -at.ny : at.ny;
+            var px = -dy;
+            var py = dx;
+            var apex = [at.x + dx * TRI, at.y + dy * TRI];
+            var b1 = [at.x + px * TRI * 0.62, at.y + py * TRI * 0.62];
+            var b2 = [at.x - px * TRI * 0.62, at.y - py * TRI * 0.62];
+            var mark = svgEl("polygon", {
+              class: "station",
+              points: apex.join(",") + " " + b1.join(",") + " " + b2.join(","),
+              fill: role === "O" ? PAPER_INK : "#ffffff",
+              stroke: PAPER_INK,
+              "stroke-width": 1.5,
+              "vector-effect": "non-scaling-stroke",
+            });
+            mark.appendChild(svgEl("title", {}));
+            mark.firstChild.textContent =
+              c.id + " " + (role === "I" ? "input" : "output") + " station";
+            svg.appendChild(mark);
+          });
+        });
+
+        drawRelationships(svg);
+        host.appendChild(svg);
+        paintDrawnCounts();
+      }
+
       function buildLayout() {
         var used = stationUsage();
         var host = document.getElementById("layout");
@@ -3517,16 +3782,6 @@
             "vector-effect": "non-scaling-stroke",
           }),
         );
-
-        /* The relationship lines are anchored to blocks and stations, so they are
-           rebuilt on every drag frame rather than only when the drag ends. */
-        var lineLayer = null;
-
-        function refreshLines() {
-          if (lineLayer && lineLayer.parentNode)
-            lineLayer.parentNode.removeChild(lineLayer);
-          lineLayer = state.showLines ? drawRelationships(svg) : null;
-        }
 
         function toLocal(event) {
           var pt = svg.createSVGPoint();
@@ -3610,7 +3865,6 @@
             placeStations();
             handle.setAttribute("x", c.x + c.w - 1.3);
             handle.setAttribute("y", c.y + c.h - 1.3);
-            refreshLines();
             evaluate();
             flagOverlaps();
           });
@@ -3640,7 +3894,6 @@
             handle.setAttribute("x", c.x + c.w - 1.3);
             handle.setAttribute("y", c.y + c.h - 1.3);
             placeStations();
-            refreshLines();
             evaluate();
             flagOverlaps();
           });
@@ -3686,7 +3939,6 @@
               c[role].edge = placed.edge;
               c[role].t = placed.t;
               placeStations();
-              refreshLines();
               evaluate();
             });
           });
@@ -3696,7 +3948,6 @@
           svg.appendChild(group);
         });
 
-        refreshLines();
         host.appendChild(svg);
         flagOverlaps();
       }
@@ -3820,13 +4071,6 @@
           tbody.appendChild(tr);
         });
       }
-
-      document
-        .getElementById("show-lines")
-        .addEventListener("change", function (event) {
-          state.showLines = event.target.checked;
-          buildLayout();
-        });
 
       document.getElementById("reset-geo").addEventListener("click", function () {
         var fresh = cloneGeometry();
@@ -5701,7 +5945,15 @@
          Tabs
          ------------------------------------------------------------------ */
 
+      document.getElementById("rel-all").addEventListener("click", function () {
+        setAllFilters(true);
+      });
+      document.getElementById("rel-none").addEventListener("click", function () {
+        setAllFilters(false);
+      });
+
       [
+        ["tab-btn-layout", "tab-layout"],
         ["tab-btn-proximity", "tab-proximity"],
         ["tab-btn-flow", "tab-flow"],
       ].forEach(function (pair, index, all) {
@@ -5713,7 +5965,8 @@
             button.setAttribute("aria-selected", chosen ? "true" : "false");
             document.getElementById(other[1]).hidden = !chosen;
           });
-          /* the flow page depends on geometry that may have moved meanwhile */
+          /* both scoring pages read geometry that may have moved meanwhile */
+          if (pair[1] === "tab-proximity") renderRelationshipView();
           if (pair[1] === "tab-flow") renderFlow();
           window.scrollTo({ top: 0 });
         });
@@ -5868,11 +6121,13 @@
       state.centers = geo.centers;
       state.rows = load();
       state.flow = loadFlow();
+      loadFilters();
       buildLegend();
       buildCurveLegend();
       renderCurveTable();
       buildChart();
       buildLayout();
+      renderRelationshipView();
       renderGeoTable();
       renderFlow();
       renderScale();
@@ -5880,7 +6135,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929135116";
+      window.__BUILD__ = "20260929140242";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
