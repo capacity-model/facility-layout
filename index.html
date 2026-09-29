@@ -28,6 +28,13 @@
         --warn-soft: #fbeedb;
         --danger: #a32218;
 
+        /* Straight out of the course deck (slide 13): the navy its flow arrows
+           are drawn in, its second blue, and the yellow its legend uses for
+           "Shaded & italics: empty". */
+        --flow-loaded: #244060;
+        --flow-empty: #497dba;
+        --empty-fill: #ffff99;
+
         /* Drawing encoding — fixed by the course legend, theme-independent
            because the layout drawing always sits on white paper. */
         --rel-adjacent: #000000;
@@ -292,11 +299,11 @@
         color: var(--ink);
       }
       .flowtable td.hasempty {
-        background: var(--warn-soft);
+        background: var(--empty-fill);
       }
 
       .flowtable input.ghost::placeholder {
-        color: var(--warn);
+        color: var(--ink);
         font-style: italic;
         opacity: 1;
       }
@@ -496,7 +503,7 @@
       td.evalnum.blocked {
         font-size: 11px;
         font-style: italic;
-        color: var(--warn);
+        color: var(--ink);
       }
 
       td.evalnum.zero {
@@ -5010,9 +5017,10 @@
         return routes;
       }
 
-      /* One family for traffic: dark for loaded, pale for empty. Green is
-         already spoken for by the "Very near" proximity line. */
-      var FLOW_INK = { loaded: "#2f4a63", empty: "#93aec4" };
+      /* The deck's own two blues: the navy it draws its flow arrows in, and the
+         lighter blue it outlines their heads with. It never colours empty trips
+         separately, because it never draws them. */
+      var FLOW_INK = { loaded: "#244060", empty: "#497dba" };
 
       function renderFlowGraph() {
         var host = document.getElementById("flow-graph");
@@ -5540,7 +5548,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929012259";
+      window.__BUILD__ = "20260929012818";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
