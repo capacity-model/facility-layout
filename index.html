@@ -1684,6 +1684,39 @@
 
         <section class="panel flow">
           <div class="scale-head">
+            <h2>Flow graph / heatmap</h2>
+            <div class="geo-tools">
+              <label class="constraint-cell">
+                View
+                <select id="graph-view">
+                  <option value="arrows">Arrows</option>
+                  <option value="heat">Heatmap</option>
+                </select>
+              </label>
+              <span class="constraint-cell">
+                <input id="graph-loaded" type="checkbox" checked />
+                Loaded
+              </span>
+              <span class="constraint-cell">
+                <input id="graph-empty" type="checkbox" />
+                Empty
+              </span>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            Every trip in the matrix above, drawn on the layout. Each route follows
+            the same aisle path the distance was measured along, so nothing here
+            crosses a block &mdash; a vehicle goes round, exactly as it would on the
+            floor. Arrow width is proportional to trips per period. The heatmap adds
+            the traffic up aisle by aisle instead, which is where congestion shows.
+          </p>
+
+          <div class="paper geo-paper" id="flow-graph"></div>
+        </section>
+
+        <section class="panel flow">
+          <div class="scale-head">
             <h2>Distance matrix</h2>
             <div class="geo-tools">
               <label class="constraint-cell">
@@ -1980,6 +2013,9 @@
         showEmpty: true,
         distMetric: "Aisle",
         distAll: false,
+        graphView: "arrows",
+        graphLoaded: true,
+        graphEmpty: false,
       };
 
       function cloneLayout0() {
@@ -4866,7 +4902,320 @@
            flow table rather than keeping their own trigger. Geometry changes
            reach them when the tab is opened. */
         renderDistance();
+        renderFlowGraph();
       }
+
+      /* ------------------------------------------------------------------
+         Flow graph and heatmap (slide 13, left)
+         ------------------------------------------------------------------ */
+
+      function cellCentre(grid, index) {
+        return {
+          x: ((index % grid.W) + 0.5) * CELL,
+          y: (((index / grid.W) | 0) + 0.5) * CELL,
+        };
+      }
+
+      /* The route a vehicle actually drives, read back off the same breadth-first
+         search the distance was measured with: step from the destination to any
+         neighbour one move closer to the source. */
+      function aislePath(grid, from, to) {
+        var a = freeCell(grid, from.x, from.y);
+        var b = freeCell(grid, to.x, to.y);
+        if (a < 0 || b < 0) return null;
+        if (!grid.cache[a]) grid.cache[a] = bfs(grid, a);
+        var dist = grid.cache[a];
+        if (dist[b] < 0) return null;
+
+        var back = [];
+        var at = b;
+        var guard = grid.W * grid.H;
+        while (at !== a && guard-- > 0) {
+          back.push(cellCentre(grid, at));
+          var d = dist[at];
+          var x = at % grid.W;
+          var y = (at / grid.W) | 0;
+          var next = -1;
+          if (x > 0 && dist[at - 1] === d - 1) next = at - 1;
+          else if (x < grid.W - 1 && dist[at + 1] === d - 1) next = at + 1;
+          else if (y > 0 && dist[at - grid.W] === d - 1) next = at - grid.W;
+          else if (y < grid.H - 1 && dist[at + grid.W] === d - 1)
+            next = at + grid.W;
+          if (next < 0) return null;
+          at = next;
+        }
+        back.push(cellCentre(grid, a));
+        back.reverse();
+        return [{ x: from.x, y: from.y }]
+          .concat(back)
+          .concat([{ x: to.x, y: to.y }]);
+      }
+
+      /* A cell-by-cell path has a point every half metre; keep only the corners so
+         the drawing stays light. */
+      function simplify(points) {
+        if (points.length < 3) return points;
+        var out = [points[0]];
+        for (var i = 1; i < points.length - 1; i++) {
+          var a = out[out.length - 1];
+          var b = points[i];
+          var c = points[i + 1];
+          var cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+          if (Math.abs(cross) > 1e-9) out.push(b);
+        }
+        out.push(points[points.length - 1]);
+        return out;
+      }
+
+      /* Every trip that runs, with the two points it runs between. A loaded trip
+         goes output -> input, an empty one input -> output. */
+      function flowRoutes() {
+        var order = flowOrder();
+        var empty = solveEmpty(order).empty;
+        var routes = [];
+        order.forEach(function (fromId, i) {
+          var a = centerById(fromId);
+          if (!a) return;
+          order.forEach(function (toId, j) {
+            var b = centerById(toId);
+            if (!b || i === j) return;
+            var loaded = loadedTrips(fromId, toId);
+            if (state.graphLoaded && loaded > 0 && a.O && b.I) {
+              routes.push({
+                kind: "loaded",
+                trips: loaded,
+                from: stationAt(a, a.O),
+                to: stationAt(b, b.I),
+              });
+            }
+            var e = empty[i][j];
+            if (state.graphEmpty && e > 0 && a.I && b.O) {
+              routes.push({
+                kind: "empty",
+                trips: e,
+                from: stationAt(a, a.I),
+                to: stationAt(b, b.O),
+              });
+            }
+          });
+        });
+        return routes;
+      }
+
+      var FLOW_INK = { loaded: "#2f4a63", empty: "#0a6b2b" };
+
+      function renderFlowGraph() {
+        var host = document.getElementById("flow-graph");
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        var B = state.building;
+        var svg = svgEl("svg", {
+          viewBox:
+            -GEO_PAD +
+            " " +
+            -GEO_PAD +
+            " " +
+            (B.w + GEO_PAD * 2) +
+            " " +
+            (B.h + GEO_PAD * 2),
+          role: "img",
+          "aria-label": "Flow graph: every trip drawn along its aisle route",
+        });
+        svg.appendChild(
+          svgEl("rect", {
+            x: -GEO_PAD,
+            y: -GEO_PAD,
+            width: B.w + GEO_PAD * 2,
+            height: B.h + GEO_PAD * 2,
+            fill: PAPER_BG,
+          }),
+        );
+        svg.appendChild(
+          svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: B.w,
+            height: B.h,
+            fill: "#ffffff",
+            stroke: PAPER_INK,
+            "stroke-width": 2,
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+
+        var grid = buildGrid();
+        var routes = flowRoutes();
+        var peak = routes.reduce(function (m, r) {
+          return Math.max(m, r.trips);
+        }, 0);
+
+        var traced = [];
+        routes.forEach(function (r) {
+          var path = aislePath(grid, r.from, r.to);
+          if (path) traced.push({ route: r, points: simplify(path) });
+        });
+
+        if (state.graphView === "heat") {
+          drawHeat(svg, grid, traced);
+        }
+
+        /* The blocks sit above the heat squares and below the arrows, so the
+           routes read as traffic running between the centers. */
+        state.centers.forEach(function (c) {
+          svg.appendChild(
+            svgEl("rect", {
+              x: c.x,
+              y: c.y,
+              width: c.w,
+              height: c.h,
+              fill: KIND_FILL[c.kind] || KIND_FILL.process,
+              "fill-opacity": state.graphView === "heat" ? 0.85 : 1,
+              stroke: PAPER_INK,
+              "stroke-width": 1.5,
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+          svg
+            .appendChild(
+              svgEl("text", {
+                x: c.x + 0.8,
+                y: c.y + 2.6,
+                fill: PAPER_INK,
+                "font-size": 2.2,
+                "font-weight": 700,
+              }),
+            )
+            .appendChild(document.createTextNode(c.id));
+        });
+
+        if (state.graphView === "arrows") {
+          traced.forEach(function (t) {
+            var w = 0.25 + 1.9 * (peak ? t.route.trips / peak : 0);
+            svg.appendChild(
+              svgEl("polyline", {
+                points: t.points
+                  .map(function (p) {
+                    return p.x.toFixed(2) + "," + p.y.toFixed(2);
+                  })
+                  .join(" "),
+                fill: "none",
+                stroke: FLOW_INK[t.route.kind],
+                "stroke-width": w,
+                "stroke-opacity": 0.5,
+                "stroke-linejoin": "round",
+                "stroke-linecap": "round",
+              }),
+            );
+            svg.appendChild(arrowHead(t.points, w, FLOW_INK[t.route.kind]));
+          });
+        }
+
+        host.appendChild(svg);
+      }
+
+      /* A filled triangle on the last leg, pointing the way the vehicle travels. */
+      function arrowHead(points, width, colour) {
+        var b = points[points.length - 1];
+        var a = points[points.length - 2] || b;
+        var dx = b.x - a.x;
+        var dy = b.y - a.y;
+        var len = Math.hypot(dx, dy) || 1;
+        var ux = dx / len;
+        var uy = dy / len;
+        var size = Math.max(0.9, width * 1.6);
+        var tipX = b.x;
+        var tipY = b.y;
+        var baseX = tipX - ux * size;
+        var baseY = tipY - uy * size;
+        var half = size * 0.45;
+        return svgEl("polygon", {
+          points:
+            tipX.toFixed(2) +
+            "," +
+            tipY.toFixed(2) +
+            " " +
+            (baseX - uy * half).toFixed(2) +
+            "," +
+            (baseY + ux * half).toFixed(2) +
+            " " +
+            (baseX + uy * half).toFixed(2) +
+            "," +
+            (baseY - ux * half).toFixed(2),
+          fill: colour,
+          "fill-opacity": 0.75,
+        });
+      }
+
+      /* Traffic per aisle cell: walk each route again at grid resolution and add
+         its trips to every cell it passes through. */
+      function drawHeat(svg, grid, traced) {
+        var load = {};
+        var peak = 0;
+        traced.forEach(function (t) {
+          for (var i = 0; i < t.points.length - 1; i++) {
+            var a = t.points[i];
+            var b = t.points[i + 1];
+            var steps = Math.max(
+              1,
+              Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / CELL),
+            );
+            for (var k = 0; k <= steps; k++) {
+              var x = a.x + ((b.x - a.x) * k) / steps;
+              var y = a.y + ((b.y - a.y) * k) / steps;
+              var cx = Math.floor(x / CELL);
+              var cy = Math.floor(y / CELL);
+              if (cx < 0 || cy < 0 || cx >= grid.W || cy >= grid.H) continue;
+              if (grid.blocked[cy * grid.W + cx]) continue;
+              var key = cy * grid.W + cx;
+              load[key] = (load[key] || 0) + t.route.trips;
+              if (load[key] > peak) peak = load[key];
+            }
+          }
+        });
+        if (!peak) return;
+        Object.keys(load).forEach(function (key) {
+          var index = Number(key);
+          var share = load[index] / peak;
+          svg.appendChild(
+            svgEl("rect", {
+              x: (index % grid.W) * CELL,
+              y: ((index / grid.W) | 0) * CELL,
+              width: CELL,
+              height: CELL,
+              fill: heatColour(share),
+              "shape-rendering": "crispEdges",
+            }),
+          );
+        });
+      }
+
+      /* Cool to hot through one hue sweep, so the ramp reads in greyscale too. */
+      function heatColour(share) {
+        var t = Math.pow(Math.max(0, Math.min(1, share)), 0.55);
+        var hue = 210 - 210 * t;
+        var light = 92 - 45 * t;
+        return "hsl(" + hue.toFixed(0) + ", 85%, " + light.toFixed(0) + "%)";
+      }
+
+      var graphViewSelect = document.getElementById("graph-view");
+      graphViewSelect.value = state.graphView;
+      graphViewSelect.addEventListener("change", function () {
+        state.graphView = graphViewSelect.value;
+        renderFlowGraph();
+      });
+      document
+        .getElementById("graph-loaded")
+        .addEventListener("change", function (ev) {
+          state.graphLoaded = ev.target.checked;
+          renderFlowGraph();
+        });
+      document
+        .getElementById("graph-empty")
+        .addEventListener("change", function (ev) {
+          state.graphEmpty = ev.target.checked;
+          renderFlowGraph();
+        });
 
       /* ------------------------------------------------------------------
          Distance matrix (slide 13)
@@ -5177,7 +5526,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929005822";
+      window.__BUILD__ = "20260929011014";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
