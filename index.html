@@ -752,6 +752,13 @@
         padding-right: 8px;
       }
 
+      .geotable input.shortname {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-weight: 600;
+        text-align: center;
+        width: 70px;
+      }
+
       .del {
         border: none;
         background: transparent;
@@ -1446,20 +1453,27 @@
       <div class="tabpanel" id="tab-layout" role="tabpanel">
         <section class="panel geo">
           <div class="scale-head">
-            <h2>Layout geometry</h2>
-            <button id="reset-geo" type="button">Reset to Layout 0</button>
+            <h2>Centers</h2>
+            <div class="geo-tools">
+              <button class="primary" id="add-center" type="button">
+                Add center
+              </button>
+              <button id="reset-geo" type="button">Reset to Layout 0</button>
+            </div>
           </div>
 
           <p class="scale-lede">
-            Drag a center to move it, drag the square at its lower-right corner to
-            resize, and drag a triangle to slide that station around its center's
-            walls. A hollow triangle pointing inward is the input station; a solid
-            one pointing outward is the output. The relationship table decides which
-            stations exist: a center gets an output the moment some relationship
-            measures from it and an input the moment one measures to it, and the
-            station leaves again when the last of those relationships does. This
-            table only sets where each one sits, and a position is remembered while
-            unused. Traced from the course drawing — the block positions reproduce
+            The set of centers is declared here, and the other two sections read it.
+            A center exists because it is listed, not because some relationship
+            mentions it &mdash; a monument, a remnant machine or a structural column
+            belongs to no relationship at all, yet it occupies space and traffic has
+            to go round it. Give each one a short name and say what it is; place it
+            by dragging, or by typing its position below. Drag a center to move it,
+            drag the square at its lower-right corner to resize, and drag a triangle
+            to slide that station along its walls. A hollow triangle pointing inward
+            is the input station, a solid one pointing outward the output; which
+            stations exist follows from the relationships declared in the proximity
+            section. Traced from the course drawing — the block positions reproduce
             the centroid distances the course reports for B–D, B–C and C–D.
           </p>
 
@@ -1473,7 +1487,8 @@
             <table class="geotable">
               <thead>
                 <tr>
-                  <th>Center</th>
+                  <th>Short name</th>
+                  <th>Description</th>
                   <th>Kind</th>
                   <th>x</th>
                   <th>y</th>
@@ -1481,6 +1496,7 @@
                   <th>height</th>
                   <th>Input station</th>
                   <th>Output station</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="geo-rows"></tbody>
@@ -1949,21 +1965,40 @@
          Domain vocabulary
          ------------------------------------------------------------------ */
 
-      var CENTERS = [
-        "MP",
-        "A",
-        "B",
-        "C",
-        "D",
-        "E",
-        "F",
-        "G",
-        "H",
-        "I",
-        "J",
-        "PF",
-        "OUT",
-      ];
+      /* The set of centers lives in the layout section; OUT is not a center but
+         the world outside the building, which relationships may measure to. */
+      var NEW_CENTER = "\u2026 add a center";
+
+      function centerNames() {
+        return state.centers
+          .map(function (c) {
+            return c.id;
+          })
+          .concat(["OUT"]);
+      }
+
+      function centerChoices() {
+        return centerNames().concat([NEW_CENTER]);
+      }
+
+      /* A relationship may name a center that does not exist yet. Rather than
+         refuse it, ask for the short name and add it to the table. */
+      function pickedCenter(value, fallback) {
+        if (value !== NEW_CENTER) return value;
+        var asked = window.prompt(
+          "Short name for the new center (it is added to the Centers table):",
+          "",
+        );
+        if (!asked) return fallback;
+        var name = String(asked).trim();
+        if (!name || name.toUpperCase() === "OUT") return fallback;
+        var existing = centerById(name);
+        if (existing) return existing.id;
+        var made = addCenter(name);
+        if (!made) return fallback;
+        saveGeometry();
+        return made.id;
+      }
 
       /* The course's five levels. Editable at the bottom of the page: the user
          may rename these, change weight or line width, and add levels of their
@@ -2492,20 +2527,34 @@
 
         tr.appendChild(
           el("td", {}, [
-            makeSelect(CENTERS, row.c1, "c1-" + index, "pair", function (v) {
-              row.c1 = v;
-              refreshDirection();
-              commit();
-            }),
+            makeSelect(
+              centerChoices(),
+              row.c1,
+              "c1-" + index,
+              "pair",
+              function (v) {
+                row.c1 = pickedCenter(v, row.c1);
+                refreshDirection();
+                commit();
+                refreshAll();
+              },
+            ),
           ]),
         );
         tr.appendChild(
           el("td", {}, [
-            makeSelect(CENTERS, row.c2, "c2-" + index, "pair", function (v) {
-              row.c2 = v;
-              refreshDirection();
-              commit();
-            }),
+            makeSelect(
+              centerChoices(),
+              row.c2,
+              "c2-" + index,
+              "pair",
+              function (v) {
+                row.c2 = pickedCenter(v, row.c2);
+                refreshDirection();
+                commit();
+                refreshAll();
+              },
+            ),
           ]),
         );
 
@@ -3040,6 +3089,7 @@
         },
         {
           id: "MP",
+          note: "Materials and parts, received from suppliers",
           x: 14.5,
           y: 0,
           w: 35.5,
@@ -3130,6 +3180,7 @@
         },
         {
           id: "PF",
+          note: "Finished products, shipped to clients",
           x: 37.5,
           y: 31.5,
           w: 12.5,
@@ -3160,6 +3211,7 @@
           centers: DEFAULT_CENTERS.map(function (c) {
             return {
               id: c.id,
+              note: c.note || "",
               x: c.x,
               y: c.y,
               w: c.w,
@@ -3194,6 +3246,7 @@
         geo.centers.forEach(function (c) {
           if (!c.I) c.I = { edge: "top", t: 0.5 };
           if (!c.O) c.O = { edge: "bottom", t: 0.5 };
+          if (typeof c.note !== "string") c.note = "";
         });
         return geo;
       }
@@ -3990,7 +4043,25 @@
 
         state.centers.forEach(function (c) {
           var tr = el("tr");
-          tr.appendChild(el("td", { class: "pairname curvename", text: c.id }));
+
+          var name = el("input", { class: "f shortname" });
+          name.value = c.id;
+          name.setAttribute("aria-label", "short name of center " + c.id);
+          name.addEventListener("change", function () {
+            var renamed = renameCenter(c, name.value);
+            name.value = renamed;
+            refreshAll();
+          });
+          tr.appendChild(el("td", {}, [name]));
+
+          var note = el("input", { class: "f", placeholder: "what happens here" });
+          note.value = c.note || "";
+          note.setAttribute("aria-label", "description of center " + c.id);
+          note.addEventListener("input", function () {
+            c.note = note.value;
+            saveGeometry();
+          });
+          tr.appendChild(el("td", {}, [note]));
 
           tr.appendChild(
             el("td", {}, [
@@ -4068,9 +4139,164 @@
             tr.appendChild(cell);
           });
 
+          var remove = el("button", {
+            class: "del",
+            type: "button",
+            title: "Remove " + c.id,
+            "aria-label": "Remove center " + c.id,
+            text: "\u00d7",
+          });
+          remove.addEventListener("click", function () {
+            removeCenter(c);
+          });
+          tr.appendChild(el("td", { class: "act" }, [remove]));
+
           tbody.appendChild(tr);
         });
       }
+
+      /* Everything that reads the set of centers, redrawn in one call. Used
+         whenever a center is added, removed or renamed. */
+      function refreshAll() {
+        buildLayout();
+        renderGeoTable();
+        renderRelationshipView();
+        render();
+        renderFlow();
+        saveGeometry();
+      }
+
+      /* A short name is an identifier: the relationship rows and the flow matrix
+         key off it, so renaming one has to carry them along. */
+      function renameCenter(center, raw) {
+        var next = String(raw || "").trim();
+        if (!next || next === center.id) return center.id;
+        if (next.toUpperCase() === "OUT") return center.id;
+        var clash = state.centers.some(function (other) {
+          return other !== center && other.id === next;
+        });
+        if (clash) return center.id;
+
+        var was = center.id;
+        center.id = next;
+        state.rows.forEach(function (row) {
+          if (row.c1 === was) row.c1 = next;
+          if (row.c2 === was) row.c2 = next;
+        });
+        var moved = {};
+        Object.keys(state.flow).forEach(function (key) {
+          var pair = key.split("|");
+          if (pair[0] === was) pair[0] = next;
+          if (pair[1] === was) pair[1] = next;
+          moved[pair.join("|")] = state.flow[key];
+        });
+        state.flow = moved;
+        save();
+        saveFlow();
+        return next;
+      }
+
+      function removeCenter(center) {
+        var used = state.rows.filter(function (row) {
+          return row.c1 === center.id || row.c2 === center.id;
+        }).length;
+        var question =
+          used > 0
+            ? "Remove " +
+              center.id +
+              "? " +
+              used +
+              (used === 1 ? " relationship" : " relationships") +
+              " and any flow to or from it go with it."
+            : "Remove " + center.id + "?";
+        if (!window.confirm(question)) return;
+
+        state.centers = state.centers.filter(function (other) {
+          return other !== center;
+        });
+        state.rows = state.rows.filter(function (row) {
+          return row.c1 !== center.id && row.c2 !== center.id;
+        });
+        Object.keys(state.flow).forEach(function (key) {
+          var pair = key.split("|");
+          if (pair[0] === center.id || pair[1] === center.id)
+            delete state.flow[key];
+        });
+        save();
+        saveFlow();
+        refreshAll();
+      }
+
+      /* A new center lands on a patch nothing else occupies. A full building has
+         no room for a generous box, so the search gives ground on size before it
+         gives up on the overlap: a small center in clear space is better than a
+         large one sitting on top of another. */
+      var NEW_CENTER_SIZES = [
+        [8, 6],
+        [6, 5],
+        [5, 4],
+        [4, 3],
+        [3, 2],
+        [2, 2],
+        [1.5, 1.5],
+      ];
+
+      function fitsAt(x, y, w, h) {
+        return state.centers.every(function (c) {
+          return x + w <= c.x || c.x + c.w <= x || y + h <= c.y || c.y + c.h <= y;
+        });
+      }
+
+      function freeSpot() {
+        var B = state.building;
+        for (var k = 0; k < NEW_CENTER_SIZES.length; k++) {
+          var w = NEW_CENTER_SIZES[k][0];
+          var h = NEW_CENTER_SIZES[k][1];
+          if (w > B.w || h > B.h) continue;
+          for (var y = 0; y + h <= B.h + 1e-9; y += 0.5) {
+            for (var x = 0; x + w <= B.w + 1e-9; x += 0.5) {
+              if (fitsAt(x, y, w, h)) return { x: x, y: y, w: w, h: h };
+            }
+          }
+        }
+        /* Nothing fits at any size: place it in the corner and let the overlap
+           warning say so, rather than refusing to add the center at all. */
+        return { x: 0, y: 0, w: 2, h: 2 };
+      }
+
+      function nextCenterName() {
+        for (var i = 0; i < 26 * 4; i++) {
+          var candidate =
+            String.fromCharCode(65 + (i % 26)) +
+            (i < 26 ? "" : String(Math.floor(i / 26) + 1));
+          if (!centerById(candidate)) return candidate;
+        }
+        return "X" + state.centers.length;
+      }
+
+      function addCenter(name) {
+        var id = name || nextCenterName();
+        if (centerById(id)) return null;
+        var at = freeSpot();
+        var center = {
+          id: id,
+          note: "",
+          x: at.x,
+          y: at.y,
+          w: at.w,
+          h: at.h,
+          kind: "process",
+          I: { edge: "top", t: 0.5 },
+          O: { edge: "bottom", t: 0.5 },
+        };
+        state.centers.push(center);
+        return center;
+      }
+
+      document.getElementById("add-center").addEventListener("click", function () {
+        addCenter(null);
+        refreshAll();
+      });
 
       document.getElementById("reset-geo").addEventListener("click", function () {
         var fresh = cloneGeometry();
@@ -5980,7 +6206,7 @@
         return JSON.stringify(
           {
             case: "Layout 0",
-            centers: CENTERS,
+            centers: centerNames(),
             maximumPossibleValue: totals().max,
             relationships: state.rows.map(function (row) {
               var imp = importanceOf(row.importance);
@@ -6135,7 +6361,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929140242";
+      window.__BUILD__ = "20260929140951";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
