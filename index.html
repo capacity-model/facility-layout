@@ -282,6 +282,10 @@
       .flowtable.dist .cellbox {
         height: 32px;
       }
+      .graph-legend {
+        font-size: 11px;
+        color: var(--muted);
+      }
       .geo-tools select {
         font: inherit;
         font-size: 12px;
@@ -1693,23 +1697,19 @@
                   <option value="heat">Heatmap</option>
                 </select>
               </label>
-              <span class="constraint-cell">
-                <input id="graph-loaded" type="checkbox" checked />
-                Loaded
-              </span>
-              <span class="constraint-cell">
-                <input id="graph-empty" type="checkbox" />
-                Empty
-              </span>
+              <button id="graph-step" type="button"></button>
+              <span class="graph-legend" id="graph-legend"></span>
             </div>
           </div>
 
           <p class="scale-lede">
-            Every trip in the matrix above, drawn on the layout. Each route follows
-            the same aisle path the distance was measured along, so nothing here
-            crosses a block &mdash; a vehicle goes round, exactly as it would on the
-            floor. Arrow width is proportional to trips per period. The heatmap adds
-            the traffic up aisle by aisle instead, which is where congestion shows.
+            The same picture the course builds up a layer at a time: the desired
+            proximities first, then the traffic that actually runs over them. Use
+            the button to add one layer at a time. Each route follows the same aisle
+            path its distance was measured along, so nothing here crosses a block
+            &mdash; a vehicle goes round, exactly as it would on the floor. Arrow
+            width is proportional to trips per period. The heatmap adds the traffic
+            up aisle by aisle instead, which is where congestion shows.
           </p>
 
           <div class="paper geo-paper" id="flow-graph"></div>
@@ -2014,8 +2014,7 @@
         distMetric: "Aisle",
         distAll: false,
         graphView: "arrows",
-        graphLoaded: true,
-        graphEmpty: false,
+        graphStep: 0,
       };
 
       function cloneLayout0() {
@@ -4980,7 +4979,7 @@
             var b = centerById(toId);
             if (!b || i === j) return;
             var loaded = loadedTrips(fromId, toId);
-            if (state.graphLoaded && loaded > 0 && a.O && b.I) {
+            if (state.graphStep >= 2 && loaded > 0 && a.O && b.I) {
               routes.push({
                 kind: "loaded",
                 trips: loaded,
@@ -4989,7 +4988,7 @@
               });
             }
             var e = empty[i][j];
-            if (state.graphEmpty && e > 0 && a.I && b.O) {
+            if (state.graphStep >= 3 && e > 0 && a.I && b.O) {
               routes.push({
                 kind: "empty",
                 trips: e,
@@ -5002,7 +5001,9 @@
         return routes;
       }
 
-      var FLOW_INK = { loaded: "#2f4a63", empty: "#0a6b2b" };
+      /* One family for traffic: dark for loaded, pale for empty. Green is
+         already spoken for by the "Very near" proximity line. */
+      var FLOW_INK = { loaded: "#2f4a63", empty: "#93aec4" };
 
       function renderFlowGraph() {
         var host = document.getElementById("flow-graph");
@@ -5088,6 +5089,10 @@
             )
             .appendChild(document.createTextNode(c.id));
         });
+
+        /* Layer 1 is the desired proximities from page one, in the course's own
+           colours; the traffic goes on top of them. */
+        if (state.graphStep >= 1) drawRelationships(svg);
 
         if (state.graphView === "arrows") {
           traced.forEach(function (t) {
@@ -5204,18 +5209,32 @@
         state.graphView = graphViewSelect.value;
         renderFlowGraph();
       });
-      document
-        .getElementById("graph-loaded")
-        .addEventListener("change", function (ev) {
-          state.graphLoaded = ev.target.checked;
-          renderFlowGraph();
-        });
-      document
-        .getElementById("graph-empty")
-        .addEventListener("change", function (ev) {
-          state.graphEmpty = ev.target.checked;
-          renderFlowGraph();
-        });
+      var GRAPH_STEPS = [
+        { button: "Show proximities", legend: "Net layout only" },
+        {
+          button: "Add loaded flows",
+          legend:
+            "Desired proximities \u2014 colour is the class, width the importance",
+        },
+        {
+          button: "Add empty flows",
+          legend: "\u002b loaded trips, width proportional to trips per period",
+        },
+        { button: "Start over", legend: "\u002b empty trips, in the paler shade" },
+      ];
+
+      function paintGraphStep() {
+        var step = GRAPH_STEPS[state.graphStep] || GRAPH_STEPS[0];
+        document.getElementById("graph-step").textContent = step.button;
+        document.getElementById("graph-legend").textContent = step.legend;
+      }
+
+      document.getElementById("graph-step").addEventListener("click", function () {
+        state.graphStep = (state.graphStep + 1) % GRAPH_STEPS.length;
+        paintGraphStep();
+        renderFlowGraph();
+      });
+      paintGraphStep();
 
       /* ------------------------------------------------------------------
          Distance matrix (slide 13)
@@ -5526,7 +5545,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929011014";
+      window.__BUILD__ = "20260929011344";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
