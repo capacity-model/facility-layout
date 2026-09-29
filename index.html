@@ -268,6 +268,10 @@
         background: var(--surface-2);
       }
 
+      .flowtable td.hasempty {
+        background: var(--warn-soft);
+      }
+
       .flowtable .empty {
         display: block;
         width: 100%;
@@ -277,8 +281,6 @@
         font-style: italic;
         font-variant-numeric: tabular-nums;
         color: var(--warn);
-        background: var(--warn-soft);
-        padding: 1px 0 2px;
       }
 
       .flowtable td.total,
@@ -4693,6 +4695,7 @@
             rowEmpty += e;
             colEmpty[j] += e;
             if (state.showEmpty && e > 0) {
+              cell.className = (i === j ? "diag " : "") + "hasempty";
               box.appendChild(el("span", { class: "empty", text: String(e) }));
             }
             tr.appendChild(cell);
@@ -4984,7 +4987,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929002635";
+      window.__BUILD__ = "20260929003606";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
