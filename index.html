@@ -830,6 +830,28 @@
 
       /* ---------- legend ---------- */
 
+      .heatkey {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .heatkey-bar {
+        display: flex;
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .heatkey-bar span {
+        width: 42px;
+        height: 14px;
+      }
+
       .relview-body {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(250px, 340px);
@@ -1850,7 +1872,8 @@
                 View
                 <select id="graph-view">
                   <option value="arrows">Arrows</option>
-                  <option value="heat">Heatmap</option>
+                  <option value="heat">Aisle heatmap</option>
+                  <option value="centers">Center heatmap</option>
                 </select>
               </label>
               <span class="constraint-cell">
@@ -1880,6 +1903,12 @@
           </p>
 
           <div class="paper geo-paper" id="flow-graph"></div>
+
+          <div class="heatkey" id="heat-key" hidden>
+            <span class="heatkey-end">Absolute zero</span>
+            <div class="heatkey-bar" id="heat-bar"></div>
+            <span class="heatkey-end">Colder &rarr; hotter</span>
+          </div>
         </section>
 
         <section class="panel flow">
@@ -5562,6 +5591,8 @@
               routes.push({
                 kind: "loaded",
                 trips: loaded,
+                fromId: fromId,
+                toId: toId,
                 from: stationAt(a, a.O),
                 to: stationAt(b, b.I),
               });
@@ -5571,6 +5602,8 @@
               routes.push({
                 kind: "empty",
                 trips: e,
+                fromId: fromId,
+                toId: toId,
                 from: stationAt(a, a.I),
                 to: stationAt(b, b.O),
               });
@@ -5643,31 +5676,49 @@
 
         /* The blocks sit above the heat squares and below the arrows, so the
            routes read as traffic running between the centers. */
+        var centerHeat =
+          state.graphView === "centers" ? centerIntensity(traced) : null;
         state.centers.forEach(function (c) {
+          var share = centerHeat ? centerHeat.share[c.id] || 0 : 0;
           svg.appendChild(
             svgEl("rect", {
               x: c.x,
               y: c.y,
               width: c.w,
               height: c.h,
-              fill: KIND_FILL[c.kind] || KIND_FILL.process,
+              fill: centerHeat
+                ? heatColour(share)
+                : KIND_FILL[c.kind] || KIND_FILL.process,
               "fill-opacity": state.graphView === "heat" ? 0.85 : 1,
               stroke: PAPER_INK,
               "stroke-width": 1.5,
               "vector-effect": "non-scaling-stroke",
             }),
           );
-          svg
-            .appendChild(
-              svgEl("text", {
-                x: c.x + 0.8,
-                y: c.y + 2.6,
-                fill: PAPER_INK,
-                "font-size": 2.2,
-                "font-weight": 700,
-              }),
-            )
-            .appendChild(document.createTextNode(c.id));
+          var label = svgEl("text", {
+            x: c.x + 0.8,
+            y: c.y + 2.6,
+            fill: centerHeat ? heatInk(share) : PAPER_INK,
+            "font-size": 2.2,
+            "font-weight": 700,
+          });
+          label.appendChild(document.createTextNode(c.id));
+          svg.appendChild(label);
+          if (centerHeat) {
+            var figure = svgEl("text", {
+              x: c.x + 0.8,
+              y: c.y + 5.2,
+              fill: heatInk(share),
+              "font-size": 1.7,
+              "font-family": '"IBM Plex Mono", ui-monospace, monospace',
+            });
+            figure.appendChild(
+              document.createTextNode(
+                String(Math.round(centerHeat.travel[c.id] || 0)),
+              ),
+            );
+            svg.appendChild(figure);
+          }
         });
 
         /* The desired proximities from page one, in the course's own colours.
@@ -5697,6 +5748,24 @@
         }
 
         host.appendChild(svg);
+        paintHeatKey();
+      }
+
+      /* The six bands, shown only when a heat view is on the screen. */
+      function paintHeatKey() {
+        var key = document.getElementById("heat-key");
+        var bar = document.getElementById("heat-bar");
+        if (!key || !bar) return;
+        var on = state.graphView !== "arrows";
+        key.hidden = !on;
+        if (!on) return;
+        while (bar.firstChild) bar.removeChild(bar.firstChild);
+        HEAT_STEPS.forEach(function (step) {
+          var cell = el("span");
+          cell.style.background = step.fill;
+          cell.title = step.label;
+          bar.appendChild(cell);
+        });
       }
 
       /* A filled triangle on the last leg, pointing the way the vehicle travels. */
@@ -5732,6 +5801,40 @@
         });
       }
 
+      /* What each center costs in travel: the metres its own trips cover, in and
+         out, which is the figure the travel evaluation reports per center. The
+         share is against the busiest center, so the scale is relative to this
+         layout rather than to some absolute standard. */
+      function centerIntensity(traced) {
+        var travel = {};
+        traced.forEach(function (t) {
+          var metres = 0;
+          for (var i = 0; i < t.points.length - 1; i++) {
+            metres += Math.hypot(
+              t.points[i + 1].x - t.points[i].x,
+              t.points[i + 1].y - t.points[i].y,
+            );
+          }
+          var total = metres * t.route.trips;
+          travel[t.route.fromId] = (travel[t.route.fromId] || 0) + total;
+          travel[t.route.toId] = (travel[t.route.toId] || 0) + total;
+        });
+        var live = Object.keys(travel).filter(function (id) {
+          return travel[id] > 0;
+        });
+        var low = Infinity;
+        var high = 0;
+        live.forEach(function (id) {
+          if (travel[id] < low) low = travel[id];
+          if (travel[id] > high) high = travel[id];
+        });
+        var share = {};
+        Object.keys(travel).forEach(function (id) {
+          share[id] = spread(travel[id], low, high);
+        });
+        return { travel: travel, share: share, low: low, high: high };
+      }
+
       /* Traffic per aisle cell: walk each route again at grid resolution and add
          its trips to every cell it passes through. */
       function drawHeat(svg, grid, traced) {
@@ -5759,9 +5862,13 @@
           }
         });
         if (!peak) return;
+        var low = Infinity;
+        Object.keys(load).forEach(function (key) {
+          if (load[key] < low) low = load[key];
+        });
         Object.keys(load).forEach(function (key) {
           var index = Number(key);
-          var share = load[index] / peak;
+          var share = spread(load[index], low, peak);
           svg.appendChild(
             svgEl("rect", {
               x: (index % grid.W) * CELL,
@@ -5775,12 +5882,49 @@
         });
       }
 
-      /* Cool to hot through one hue sweep, so the ramp reads in greyscale too. */
+      /* The deck's own six-step scale, read out of slide 19's legend: black is
+         absolute zero, then colder to hotter. Discrete bands rather than a smooth
+         ramp, because the point is to tell one corridor from the next, not to
+         read an exact figure off a colour. */
+      var HEAT_STEPS = [
+        { fill: "#000000", label: "Absolute zero" },
+        { fill: "#365f92", label: "Coldest" },
+        { fill: "#dde7f3", label: "Cold" },
+        { fill: "#ffffb8", label: "Warm" },
+        { fill: "#f79546", label: "Hot" },
+        { fill: "#ff0000", label: "Hottest" },
+      ];
+
+      function heatBand(share) {
+        if (!(share > 0)) return 0;
+        var t = Math.max(0, Math.min(1, share));
+        var band = 1 + Math.floor(t * (HEAT_STEPS.length - 1.001));
+        return Math.min(HEAT_STEPS.length - 1, band);
+      }
+
+      /* Where a value sits between the quietest and the busiest thing on the
+         drawing. Spreading over the observed range rather than over nought-to-peak
+         is what keeps all five live bands in use: every center carries some
+         traffic, so nought is never approached and half the scale would otherwise
+         go unused. Zero itself stays zero, and gets the black band. */
+      function spread(value, low, high) {
+        if (!(value > 0)) return 0;
+        if (!(high > low)) return 1;
+        var t = (value - low) / (high - low);
+        /* The quietest live center or corridor belongs in the first live band,
+           never in the black one: black means nothing moves there at all, and the
+           lowest of twelve busy centers is not nothing. */
+        return t > 0 ? t : Number.MIN_VALUE;
+      }
+
       function heatColour(share) {
-        var t = Math.pow(Math.max(0, Math.min(1, share)), 0.55);
-        var hue = 210 - 210 * t;
-        var light = 92 - 45 * t;
-        return "hsl(" + hue.toFixed(0) + ", 85%, " + light.toFixed(0) + "%)";
+        return HEAT_STEPS[heatBand(share)].fill;
+      }
+
+      /* A label dropped on a hot band has to stay legible. */
+      function heatInk(share) {
+        var band = heatBand(share);
+        return band === 0 || band === 1 || band === 5 ? "#ffffff" : PAPER_INK;
       }
 
       var graphViewSelect = document.getElementById("graph-view");
@@ -6366,7 +6510,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260929141340";
+      window.__BUILD__ = "20260930233015";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
