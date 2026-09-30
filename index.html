@@ -5705,9 +5705,12 @@
           label.appendChild(document.createTextNode(c.id));
           svg.appendChild(label);
           if (centerHeat) {
+            /* 4.6 sits the figure just under the name; on the shortest centers
+               (h = 5) that would push its descenders through the bottom edge, so
+               it lifts to keep 0.6 of clearance inside the block. */
             var figure = svgEl("text", {
               x: c.x + 0.8,
-              y: c.y + 5.2,
+              y: c.y + Math.min(4.6, c.h - 0.6),
               fill: heatInk(share),
               "font-size": 1.7,
               "font-family": '"IBM Plex Mono", ui-monospace, monospace',
@@ -6510,7 +6513,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20260930233015";
+      window.__BUILD__ = "20260930235330";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
