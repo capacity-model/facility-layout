@@ -1036,6 +1036,94 @@
          of the position field. Written as .params.station-pair so it outranks the
          generic .params rule, which sets flex-wrap: wrap later in the sheet and
          would otherwise stack the two controls onto separate lines. */
+      .kinds {
+        margin: 14px 0 6px;
+      }
+
+      .kinds h3 {
+        margin: 0 0 4px;
+        font-size: 15px;
+      }
+
+      .kinds-lede {
+        margin: 0 0 8px;
+        max-width: 62ch;
+        font-size: 13px;
+        color: var(--muted, #5a6572);
+      }
+
+      .kind-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .kind-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 6px;
+        border: 1px solid var(--rule, #d7dce2);
+        border-radius: 4px;
+      }
+
+      .kind-row input.kind-colour {
+        width: 30px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid var(--rule, #d7dce2);
+        background: none;
+      }
+
+      .kind-row input.shortname {
+        width: 92px;
+      }
+
+      .kind-count {
+        font-size: 12px;
+        color: var(--muted, #5a6572);
+        white-space: nowrap;
+      }
+
+      .station-cell {
+        min-width: 300px;
+      }
+
+      /* Each station is one line — id, function, wall, position, remove — so a
+         center with five of them reads as a short list rather than a wide row. */
+      .params.station-row {
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+
+      .params.station-row input.shortname {
+        width: 58px;
+        flex: none;
+      }
+
+      .params.station-row select {
+        width: auto;
+        min-width: 76px;
+        flex: none;
+      }
+
+      .params.station-row input.num {
+        width: 60px;
+        flex: none;
+      }
+
+      .params.station-row .unused {
+        white-space: nowrap;
+      }
+
+      button.add-station {
+        font-size: 12px;
+        padding: 2px 8px;
+      }
+
       .params.station-pair {
         align-items: center;
         flex-wrap: nowrap;
@@ -1498,10 +1586,14 @@
             by dragging, or by typing its position below. Drag a center to move it,
             drag the square at its lower-right corner to resize, and drag a triangle
             to slide that station along its walls. A hollow triangle pointing inward
-            is the input station, a solid one pointing outward the output; which
-            stations exist follows from the relationships declared in the proximity
-            section. Traced from the course drawing — the block positions reproduce
-            the centroid distances the course reports for B–D, B–C and C–D.
+            is an input station, a solid one pointing outward an output, and a kite
+            one that serves as both. Every center starts with an input and an
+            output; add as many more as it needs &mdash; material in, waste out,
+            people in and out &mdash; each with its own id, function and place on a
+            wall. Flows still travel between a center&rsquo;s first input and first
+            output; routing them through a named station is the next step. Traced
+            from the course drawing — the block positions reproduce the centroid
+            distances the course reports for B–D, B–C and C–D.
           </p>
 
           <div class="paper geo-paper">
@@ -1509,6 +1601,16 @@
           </div>
 
           <div class="issues" id="geo-issues" hidden></div>
+
+          <div class="kinds">
+            <h3>Center types</h3>
+            <p class="kinds-lede">
+              A type is a name and a fill colour, and nothing else &mdash; it is how
+              a layout is read at a glance, never how it is scored. The two the
+              course uses are here; rename them, recolour them, or add your own.
+            </p>
+            <div class="kind-list" id="kind-list"></div>
+          </div>
 
           <div class="scalewrap">
             <table class="geotable">
@@ -1521,8 +1623,7 @@
                   <th>y</th>
                   <th>width</th>
                   <th>height</th>
-                  <th>Input station</th>
-                  <th>Output station</th>
+                  <th>I/O stations</th>
                   <th></th>
                 </tr>
               </thead>
@@ -2337,10 +2438,12 @@
         return node;
       }
 
-      function makeSelect(options, value, id, cls, onChange) {
+      /* `label` is optional: it lets a select store a terse value while showing a
+         readable one, as the station function column does (in → Input). */
+      function makeSelect(options, value, id, cls, onChange, label) {
         var sel = el("select", { id: id, class: cls || "" });
         options.forEach(function (opt) {
-          var o = el("option", { value: opt, text: opt });
+          var o = el("option", { value: opt, text: label ? label(opt) : opt });
           if (opt === value) o.selected = true;
           sel.appendChild(o);
         });
@@ -3235,9 +3338,113 @@
         },
       ];
 
-      var KINDS = ["process", "dock"];
-      var KIND_FILL = { process: "#f7f2a4", dock: "#b6e9f4" };
+      /* The course draws two kinds of center — the pale yellow of a process and
+         the blue of a dock — but what kinds exist is the user's to decide, so the
+         pair below is only where a case starts. A kind is a name and a colour; it
+         carries no behaviour, which is why adding one can never change a score. */
+      var DEFAULT_KINDS = [
+        { id: "process", fill: "#f7f2a4" },
+        { id: "dock", fill: "#b6e9f4" },
+      ];
+
+      function kindList() {
+        return Array.isArray(state.kinds) && state.kinds.length
+          ? state.kinds
+          : DEFAULT_KINDS;
+      }
+
+      function kindNames() {
+        return kindList().map(function (k) {
+          return k.id;
+        });
+      }
+
+      function kindFill(id) {
+        var hit = null;
+        kindList().forEach(function (k) {
+          if (k.id === id) hit = k;
+        });
+        return (hit || kindList()[0]).fill;
+      }
+
+      function centersOfKind(id) {
+        return state.centers.filter(function (c) {
+          return c.kind === id;
+        });
+      }
       var EDGES = ["top", "right", "bottom", "left"];
+
+      /* A center's I/O stations. The deck names the usual three — Input, Output,
+         Input-output — but a center may carry any number of them under whatever id
+         the user writes: Material Input (MI), Waste Output (WO), People I/O (PIO).
+         What a station's id never decides is which way goods may cross it; that is
+         its function, and it is what says which side of a flow the station may
+         stand on. */
+      var STATION_FN = ["in", "out", "io"];
+      var STATION_FN_LABEL = {
+        in: "Input",
+        out: "Output",
+        io: "Input-output",
+      };
+
+      function stationsOf(c) {
+        return c && Array.isArray(c.stations) ? c.stations : [];
+      }
+
+      function carriesIn(st) {
+        return !!st && (st.fn === "in" || st.fn === "io");
+      }
+
+      function carriesOut(st) {
+        return !!st && (st.fn === "out" || st.fn === "io");
+      }
+
+      function stationById(c, id) {
+        var found = null;
+        stationsOf(c).forEach(function (st) {
+          if (st.id === id) found = st;
+        });
+        return found;
+      }
+
+      /* The first station able to receive, and the first able to dispatch. On the
+         one-input-one-output layout the deck ships, these are exactly the I and O
+         the rest of the app has always worked with. */
+      function firstIn(c) {
+        var hit = null;
+        stationsOf(c).forEach(function (st) {
+          if (!hit && carriesIn(st)) hit = st;
+        });
+        return hit;
+      }
+
+      function firstOut(c) {
+        var hit = null;
+        stationsOf(c).forEach(function (st) {
+          if (!hit && carriesOut(st)) hit = st;
+        });
+        return hit;
+      }
+
+      /* c.I and c.O are left pointing *into* the station list rather than holding
+         copies, so every existing reading of a center's input or output station
+         keeps working and keeps editing the list itself. */
+      function bindPrimaryStations(c) {
+        c.I = stationById(c, "I") || firstIn(c);
+        c.O = stationById(c, "O") || firstOut(c);
+      }
+
+      function nextStationId(c) {
+        var taken = {};
+        stationsOf(c).forEach(function (st) {
+          taken[st.id] = true;
+        });
+        if (!taken.IO) return "IO";
+        for (var n = 2; n < 100; n++) {
+          if (!taken["IO" + n]) return "IO" + n;
+        }
+        return "IO";
+      }
 
       function cloneGeometry() {
         return {
@@ -3273,23 +3480,84 @@
         return cloneGeometry();
       }
 
-      /* Whether a station exists is decided by the relationship table, so every
-         center keeps a position for both of them, ready for the moment a
-         relationship starts using it. */
+      /* Geometry arrives either in the one-input-one-output shape the tool shipped
+         with or in the station list it keeps now. Both end up as a list, and the
+         primary pair is bound back into it. A center always keeps a position for
+         its I and its O even while no relationship reaches for them, ready for the
+         moment one does. */
       function normalizeStations(geo) {
         geo.centers.forEach(function (c) {
-          if (!c.I) c.I = { edge: "top", t: 0.5 };
-          if (!c.O) c.O = { edge: "bottom", t: 0.5 };
+          if (!Array.isArray(c.stations) || !c.stations.length) {
+            var i = c.I || { edge: "top", t: 0.5 };
+            var o = c.O || { edge: "bottom", t: 0.5 };
+            c.stations = [
+              { id: "I", fn: "in", edge: i.edge, t: i.t },
+              { id: "O", fn: "out", edge: o.edge, t: o.t },
+            ];
+          }
+          var seen = {};
+          c.stations = c.stations.filter(function (st) {
+            if (!st || typeof st !== "object") return false;
+            if (typeof st.id !== "string" || !st.id.trim()) st.id = "IO";
+            st.id = st.id.trim();
+            if (seen[st.id]) return false;
+            seen[st.id] = true;
+            if (STATION_FN.indexOf(st.fn) === -1) st.fn = "io";
+            if (EDGES.indexOf(st.edge) === -1) st.edge = "top";
+            var t = parseFloat(st.t);
+            st.t = isNaN(t) ? 0.5 : Math.max(0, Math.min(1, t));
+            return true;
+          });
+          bindPrimaryStations(c);
           if (typeof c.note !== "string") c.note = "";
         });
+        if (!Array.isArray(geo.kinds) || !geo.kinds.length) {
+          geo.kinds = DEFAULT_KINDS.map(function (k) {
+            return { id: k.id, fill: k.fill };
+          });
+        }
+        var known = {};
+        geo.kinds = geo.kinds.filter(function (k) {
+          if (!k || typeof k.id !== "string" || !k.id.trim()) return false;
+          k.id = k.id.trim();
+          if (known[k.id]) return false;
+          known[k.id] = true;
+          if (!/^#[0-9a-fA-F]{6}$/.test(k.fill || "")) k.fill = "#f7f2a4";
+          return true;
+        });
+        /* A center whose kind was deleted elsewhere still has to draw. */
+        geo.centers.forEach(function (c) {
+          if (!known[c.kind]) c.kind = geo.kinds[0].id;
+        });
         return geo;
+      }
+
+      /* I and O are aliases into the station list, so they are dropped on the way
+         out; normalizeStations binds them again on the way back in. */
+      function serializeCenter(c) {
+        return {
+          id: c.id,
+          note: c.note || "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          kind: c.kind,
+          stations: stationsOf(c).map(function (st) {
+            return { id: st.id, fn: st.fn, edge: st.edge, t: st.t };
+          }),
+        };
       }
 
       function saveGeometry() {
         try {
           window.localStorage.setItem(
             GEO_KEY,
-            JSON.stringify({ building: state.building, centers: state.centers }),
+            JSON.stringify({
+              building: state.building,
+              kinds: kindList(),
+              centers: state.centers.map(serializeCenter),
+            }),
           );
         } catch (err) {
           /* the editor still works without a saved draft */
@@ -3353,6 +3621,76 @@
          leaves from its tip; an input triangle points inward, so the line arrives
          at its base, on the wall. */
       var TRI = 1.5;
+
+      /* The deck's own I and O appear once a relationship reaches for them, which
+         is how this layout has always read. A station the user added is theirs, so
+         it is always drawn. */
+      function stationDrawn(c, st, used) {
+        if (st.id === "I" || st.id === "O") return !!used[c.id + ":" + st.id];
+        return true;
+      }
+
+      /* An input points into its center and an output points away from it. A
+         station that does both has no single way to aim, so it is drawn as a kite:
+         the same outward apex, pulled back to a point on the inside as well. */
+      function stationPoints(at, st) {
+        var inward = st.fn === "in";
+        var dx = inward ? -at.nx : at.nx;
+        var dy = inward ? -at.ny : at.ny;
+        var px = -dy;
+        var py = dx;
+        var pts = [[at.x + dx * TRI, at.y + dy * TRI]];
+        pts.push([at.x + px * TRI * 0.62, at.y + py * TRI * 0.62]);
+        if (st.fn === "io")
+          pts.push([at.x - dx * TRI * 0.55, at.y - dy * TRI * 0.55]);
+        pts.push([at.x - px * TRI * 0.62, at.y - py * TRI * 0.62]);
+        return pts
+          .map(function (q) {
+            return q[0] + "," + q[1];
+          })
+          .join(" ");
+      }
+
+      function stationMark(at, st) {
+        return svgEl("polygon", {
+          class: "station",
+          points: stationPoints(at, st),
+          fill: st.fn === "out" ? PAPER_INK : "#ffffff",
+          stroke: PAPER_INK,
+          "stroke-width": 1.5,
+          "vector-effect": "non-scaling-stroke",
+        });
+      }
+
+      function stationLabel(c, st) {
+        return (
+          c.id + " " + st.id + " (" + STATION_FN_LABEL[st.fn].toLowerCase() + ")"
+        );
+      }
+
+      /* I and O carry their meaning in the shape alone, as the deck draws them.
+         Anything else is named on the layout, or it cannot be told apart. */
+      function stationTag(at, st) {
+        if (st.id === "I" || st.id === "O") return null;
+        var tag = svgEl("text", {
+          class: "station-tag",
+          fill: PAPER_INK,
+          "font-size": 1.5,
+          "font-weight": 700,
+        });
+        tag.textContent = st.id;
+        placeStationTag(tag, at);
+        return tag;
+      }
+
+      function placeStationTag(tag, at) {
+        tag.setAttribute("x", at.x + at.nx * TRI * 1.9);
+        tag.setAttribute("y", at.y + at.ny * TRI * 1.9 + 0.6);
+        tag.setAttribute(
+          "text-anchor",
+          at.nx === 0 ? "middle" : at.nx > 0 ? "start" : "end",
+        );
+      }
 
       function centroidOf(c) {
         return { x: c.x + c.w / 2, y: c.y + c.h / 2 };
@@ -3782,7 +4120,7 @@
               y: c.y,
               width: c.w,
               height: c.h,
-              fill: KIND_FILL[c.kind] || KIND_FILL.process,
+              fill: kindFill(c.kind),
               stroke: PAPER_INK,
               "stroke-width": 1.5,
               "vector-effect": "non-scaling-stroke",
@@ -3798,28 +4136,15 @@
           label.textContent = c.id;
           svg.appendChild(label);
 
-          ["I", "O"].forEach(function (role) {
-            if (!c[role] || !used[c.id + ":" + role]) return;
-            var at = stationAt(c, c[role]);
-            var dx = role === "I" ? -at.nx : at.nx;
-            var dy = role === "I" ? -at.ny : at.ny;
-            var px = -dy;
-            var py = dx;
-            var apex = [at.x + dx * TRI, at.y + dy * TRI];
-            var b1 = [at.x + px * TRI * 0.62, at.y + py * TRI * 0.62];
-            var b2 = [at.x - px * TRI * 0.62, at.y - py * TRI * 0.62];
-            var mark = svgEl("polygon", {
-              class: "station",
-              points: apex.join(",") + " " + b1.join(",") + " " + b2.join(","),
-              fill: role === "O" ? PAPER_INK : "#ffffff",
-              stroke: PAPER_INK,
-              "stroke-width": 1.5,
-              "vector-effect": "non-scaling-stroke",
-            });
+          stationsOf(c).forEach(function (st) {
+            if (!stationDrawn(c, st, used)) return;
+            var at = stationAt(c, st);
+            var mark = stationMark(at, st);
             mark.appendChild(svgEl("title", {}));
-            mark.firstChild.textContent =
-              c.id + " " + (role === "I" ? "input" : "output") + " station";
+            mark.firstChild.textContent = stationLabel(c, st) + " station";
             svg.appendChild(mark);
+            var tag = stationTag(at, st);
+            if (tag) svg.appendChild(tag);
           });
         });
 
@@ -3911,7 +4236,7 @@
             y: c.y,
             width: c.w,
             height: c.h,
-            fill: KIND_FILL[c.kind] || KIND_FILL.process,
+            fill: kindFill(c.kind),
             stroke: PAPER_INK,
             "stroke-width": 1.5,
             "vector-effect": "non-scaling-stroke",
@@ -3985,46 +4310,30 @@
             flagOverlaps();
           });
 
-          var marks = {};
+          var marks = [];
 
           function placeStations() {
-            ["I", "O"].forEach(function (role) {
-              var mark = marks[role];
-              if (!mark) return;
-              var at = stationAt(c, c[role]);
-              var size = TRI;
-              var dx = role === "I" ? -at.nx : at.nx;
-              var dy = role === "I" ? -at.ny : at.ny;
-              var px = -dy,
-                py = dx;
-              var apex = [at.x + dx * size, at.y + dy * size];
-              var b1 = [at.x + px * size * 0.62, at.y + py * size * 0.62];
-              var b2 = [at.x - px * size * 0.62, at.y - py * size * 0.62];
-              mark.setAttribute(
-                "points",
-                apex.join(",") + " " + b1.join(",") + " " + b2.join(","),
-              );
+            marks.forEach(function (entry) {
+              var at = stationAt(c, entry.st);
+              entry.mark.setAttribute("points", stationPoints(at, entry.st));
+              if (entry.tag) placeStationTag(entry.tag, at);
             });
           }
 
-          ["I", "O"].forEach(function (role) {
-            if (!c[role] || !used[c.id + ":" + role]) return;
-            var mark = svgEl("polygon", {
-              class: "station",
-              fill: role === "O" ? PAPER_INK : "#ffffff",
-              stroke: PAPER_INK,
-              "stroke-width": 1.5,
-              "vector-effect": "non-scaling-stroke",
-            });
+          stationsOf(c).forEach(function (st) {
+            if (!stationDrawn(c, st, used)) return;
+            var at = stationAt(c, st);
+            var mark = stationMark(at, st);
             mark.appendChild(svgEl("title", {}));
-            mark.firstChild.textContent =
-              c.id + " " + (role === "I" ? "input" : "output") + " station";
-            marks[role] = mark;
+            mark.firstChild.textContent = stationLabel(c, st) + " station";
+            var tag = stationTag(at, st);
+            marks.push({ st: st, mark: mark, tag: tag });
             group.appendChild(mark);
+            if (tag) group.appendChild(tag);
             beginDrag(mark, function (now) {
               var placed = projectToWall(c, now.x, now.y);
-              c[role].edge = placed.edge;
-              c[role].t = placed.t;
+              st.edge = placed.edge;
+              st.t = placed.t;
               placeStations();
               evaluate();
             });
@@ -4071,6 +4380,218 @@
         }
       }
 
+      /* One station's row inside a center's station cell: what it is called, which
+         way goods cross it, and where it sits on which wall. The deck's own I and
+         O stay listed even while no relationship reaches for them — they are the
+         pair every center is born with — but they say so rather than going blank,
+         which is how this table used to read. */
+      function stationRow(c, st, used) {
+        var row = el("div", { class: "params station-row" });
+
+        var name = el("input", { class: "f shortname", type: "text" });
+        name.value = st.id;
+        name.setAttribute("aria-label", c.id + " station id");
+        name.addEventListener("change", function () {
+          var wanted = name.value.trim();
+          if (!wanted || stationById(c, wanted) === st) {
+            name.value = st.id;
+            return;
+          }
+          if (stationById(c, wanted)) {
+            window.alert(c.id + " already has a station called " + wanted + ".");
+            name.value = st.id;
+            return;
+          }
+          st.id = wanted;
+          bindPrimaryStations(c);
+          refreshAll();
+        });
+        row.appendChild(name);
+
+        row.appendChild(
+          makeSelect(
+            STATION_FN,
+            st.fn,
+            "fn-" + c.id + "-" + st.id,
+            "",
+            function (v) {
+              st.fn = v;
+              bindPrimaryStations(c);
+              refreshAll();
+            },
+            function (v) {
+              return STATION_FN_LABEL[v];
+            },
+          ),
+        );
+
+        row.appendChild(
+          makeSelect(
+            EDGES,
+            st.edge,
+            "edge-" + c.id + "-" + st.id,
+            "",
+            function (v) {
+              st.edge = v;
+              buildLayout();
+              saveGeometry();
+            },
+          ),
+        );
+
+        var pos = el("input", {
+          class: "f num",
+          type: "number",
+          step: "0.05",
+          min: "0",
+          max: "1",
+        });
+        pos.value = String(st.t);
+        pos.setAttribute("aria-label", c.id + " " + st.id + " position");
+        pos.addEventListener("input", function () {
+          var value = parseFloat(pos.value);
+          if (isNaN(value)) return;
+          st.t = Math.max(0, Math.min(1, value));
+          buildLayout();
+          saveGeometry();
+        });
+        row.appendChild(pos);
+
+        var drop = el("button", {
+          class: "del",
+          type: "button",
+          text: "×",
+          title: "Remove station " + st.id + " from " + c.id,
+        });
+        drop.addEventListener("click", function () {
+          if (stationsOf(c).length < 2) {
+            window.alert("A center keeps at least one I/O station.");
+            return;
+          }
+          c.stations = c.stations.filter(function (other) {
+            return other !== st;
+          });
+          bindPrimaryStations(c);
+          refreshAll();
+        });
+        row.appendChild(drop);
+
+        if ((st.id === "I" || st.id === "O") && !used[c.id + ":" + st.id]) {
+          row.appendChild(el("span", { class: "unused", text: "unused" }));
+        }
+        return row;
+      }
+
+      /* The center-type editor. Renaming a type carries every center that wears it
+         along, and removing one hands its centers to the type above, so the layout
+         can never be left pointing at a type that is gone. */
+      function renderKinds() {
+        var host = document.getElementById("kind-list");
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        kindList().forEach(function (k) {
+          var row = el("div", { class: "kind-row" });
+
+          var swatch = el("input", { class: "kind-colour", type: "color" });
+          swatch.value = k.fill;
+          swatch.setAttribute("aria-label", k.id + " colour");
+          swatch.addEventListener("input", function () {
+            k.fill = swatch.value;
+            buildLayout();
+            renderRelationshipView();
+            renderFlow();
+            saveGeometry();
+          });
+          row.appendChild(swatch);
+
+          var name = el("input", { class: "f shortname", type: "text" });
+          name.value = k.id;
+          name.setAttribute("aria-label", k.id + " name");
+          name.addEventListener("change", function () {
+            var wanted = name.value.trim();
+            if (!wanted || wanted === k.id) {
+              name.value = k.id;
+              return;
+            }
+            if (kindNames().indexOf(wanted) !== -1) {
+              window.alert("There is already a center type called " + wanted + ".");
+              name.value = k.id;
+              return;
+            }
+            var moving = centersOfKind(k.id);
+            k.id = wanted;
+            moving.forEach(function (c) {
+              c.kind = wanted;
+            });
+            refreshAll();
+          });
+          row.appendChild(name);
+
+          var count = centersOfKind(k.id).length;
+          row.appendChild(
+            el("span", {
+              class: "kind-count",
+              text: count === 1 ? "1 center" : count + " centers",
+            }),
+          );
+
+          var drop = el("button", {
+            class: "del",
+            type: "button",
+            text: "×",
+            title: "Remove the " + k.id + " type",
+          });
+          drop.addEventListener("click", function () {
+            if (kindList().length < 2) {
+              window.alert("A case keeps at least one center type.");
+              return;
+            }
+            var moving = centersOfKind(k.id);
+            var heir = kindNames().filter(function (other) {
+              return other !== k.id;
+            })[0];
+            if (
+              moving.length &&
+              !window.confirm(
+                "Remove " +
+                  k.id +
+                  "? Its " +
+                  (moving.length === 1 ? "1 center" : moving.length + " centers") +
+                  " will become " +
+                  heir +
+                  ".",
+              )
+            )
+              return;
+            state.kinds = kindList().filter(function (other) {
+              return other !== k;
+            });
+            moving.forEach(function (c) {
+              c.kind = heir;
+            });
+            refreshAll();
+          });
+          row.appendChild(drop);
+          host.appendChild(row);
+        });
+
+        var add = el("button", {
+          class: "add-station",
+          type: "button",
+          text: "+ type",
+          title: "Add a center type",
+        });
+        add.addEventListener("click", function () {
+          var taken = kindNames();
+          var name = "type";
+          for (var n = 2; taken.indexOf(name) !== -1; n++) name = "type " + n;
+          state.kinds = kindList().concat([{ id: name, fill: "#e2e2e2" }]);
+          refreshAll();
+        });
+        host.appendChild(add);
+      }
+
       function renderGeoTable() {
         var tbody = document.getElementById("geo-rows");
         while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
@@ -4099,7 +4620,7 @@
 
           tr.appendChild(
             el("td", {}, [
-              makeSelect(KINDS, c.kind, "kind-" + c.id, "", function (v) {
+              makeSelect(kindNames(), c.kind, "kind-" + c.id, "", function (v) {
                 c.kind = v;
                 buildLayout();
                 saveGeometry();
@@ -4128,50 +4649,28 @@
           });
 
           var used = stationUsage();
-          ["I", "O"].forEach(function (role) {
-            var cell = el("td", { class: "station-cell" });
-            if (!used[c.id + ":" + role]) {
-              cell.appendChild(
-                el("div", {
-                  class: "unused",
-                  text: "not used by any relationship",
-                }),
-              );
-              tr.appendChild(cell);
-              return;
-            }
-            var edge = makeSelect(
-              EDGES,
-              c[role].edge,
-              role + "-edge-" + c.id,
-              "",
-              function (v) {
-                c[role].edge = v;
-                buildLayout();
-                saveGeometry();
-              },
-            );
-            var pos = el("input", {
-              class: "f num",
-              type: "number",
-              step: "0.05",
-              min: "0",
-              max: "1",
-            });
-            pos.value = String(c[role].t);
-            pos.setAttribute("aria-label", c.id + " " + role + " position");
-            pos.addEventListener("input", function () {
-              var value = parseFloat(pos.value);
-              if (isNaN(value)) return;
-              c[role].t = Math.max(0, Math.min(1, value));
-              buildLayout();
-              saveGeometry();
-            });
-            cell.appendChild(
-              el("div", { class: "params station-pair" }, [edge, pos]),
-            );
-            tr.appendChild(cell);
+          var cell = el("td", { class: "station-cell" });
+          stationsOf(c).forEach(function (st) {
+            cell.appendChild(stationRow(c, st, used));
           });
+          var add = el("button", {
+            class: "add-station",
+            type: "button",
+            text: "+ station",
+            title: "Add an I/O station to " + c.id,
+          });
+          add.addEventListener("click", function () {
+            c.stations.push({
+              id: nextStationId(c),
+              fn: "io",
+              edge: "right",
+              t: 0.5,
+            });
+            bindPrimaryStations(c);
+            refreshAll();
+          });
+          cell.appendChild(add);
+          tr.appendChild(cell);
 
           var remove = el("button", {
             class: "del",
@@ -4193,6 +4692,7 @@
          whenever a center is added, removed or renamed. */
       function refreshAll() {
         buildLayout();
+        renderKinds();
         renderGeoTable();
         renderRelationshipView();
         render();
@@ -5686,9 +6186,7 @@
               y: c.y,
               width: c.w,
               height: c.h,
-              fill: centerHeat
-                ? heatColour(share)
-                : KIND_FILL[c.kind] || KIND_FILL.process,
+              fill: centerHeat ? heatColour(share) : kindFill(c.kind),
               "fill-opacity": state.graphView === "heat" ? 0.85 : 1,
               stroke: PAPER_INK,
               "stroke-width": 1.5,
@@ -6496,6 +6994,7 @@
       state.curves = loadCurves();
       var geo = normalizeStations(loadGeometry());
       state.building = geo.building;
+      state.kinds = geo.kinds;
       state.centers = geo.centers;
       state.rows = load();
       state.flow = loadFlow();
@@ -6506,6 +7005,7 @@
       buildChart();
       buildLayout();
       renderRelationshipView();
+      renderKinds();
       renderGeoTable();
       renderFlow();
       renderScale();
@@ -6513,7 +7013,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261001211258";
+      window.__BUILD__ = "20261002151435";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
