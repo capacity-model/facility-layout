@@ -1931,6 +1931,10 @@
                 <input id="show-empty" type="checkbox" checked />
                 Show empty trips
               </span>
+              <span class="check">
+                <input id="hide-quiet" type="checkbox" />
+                Hide stations with no flow
+              </span>
               <button id="reset-flow" type="button">Load the course example</button>
               <button id="clear-flow" type="button">Clear</button>
             </div>
@@ -2360,6 +2364,7 @@
         snap: 0.5,
         flow: {},
         showEmpty: true,
+        hideQuiet: false,
         distMetric: "Aisle",
         distAll: false,
         showProx: {},
@@ -4402,8 +4407,15 @@
             name.value = st.id;
             return;
           }
+          var was = st.id;
           st.id = wanted;
+          rekeyFlows(function (end) {
+            return end.cid === c.id && end.sid === was
+              ? { cid: c.id, sid: wanted }
+              : end;
+          });
           bindPrimaryStations(c);
+          saveFlow();
           refreshAll();
         });
         row.appendChild(name);
@@ -4468,10 +4480,28 @@
             window.alert("A center keeps at least one I/O station.");
             return;
           }
+          var carried = flowsAt(c.id, st.id);
+          if (
+            carried > 0 &&
+            !window.confirm(
+              "Remove " +
+                st.id +
+                " from " +
+                c.id +
+                "? " +
+                (carried === 1 ? "1 flow" : carried + " flows") +
+                " travelling through it will be removed too.",
+            )
+          )
+            return;
           c.stations = c.stations.filter(function (other) {
             return other !== st;
           });
+          rekeyFlows(function (end) {
+            return end.cid === c.id && end.sid === st.id ? null : end;
+          });
           bindPrimaryStations(c);
+          saveFlow();
           refreshAll();
         });
         row.appendChild(drop);
@@ -4700,6 +4730,39 @@
         saveGeometry();
       }
 
+      /* A flow is keyed by the two stations it runs between, so anything that
+         renames or removes a center or a station has to carry its flows along or
+         they are orphaned: the key would name a station that no longer exists,
+         and the trips would quietly stop counting. `move` is handed each end and
+         returns the end it becomes, or null to drop the flow entirely. */
+      function flowsAt(cid, sid) {
+        var n = 0;
+        Object.keys(state.flow).forEach(function (key) {
+          var ends = splitFlowKey(key);
+          if (!ends || !(state.flow[key] > 0)) return;
+          if (
+            (ends.from.cid === cid && ends.from.sid === sid) ||
+            (ends.to.cid === cid && ends.to.sid === sid)
+          )
+            n++;
+        });
+        return n;
+      }
+
+      function rekeyFlows(move) {
+        var next = {};
+        Object.keys(state.flow).forEach(function (key) {
+          var ends = splitFlowKey(key);
+          if (!ends) return;
+          var from = move(ends.from);
+          var to = move(ends.to);
+          if (!from || !to) return;
+          next[from.cid + "." + from.sid + "|" + to.cid + "." + to.sid] =
+            state.flow[key];
+        });
+        state.flow = next;
+      }
+
       /* A short name is an identifier: the relationship rows and the flow matrix
          key off it, so renaming one has to carry them along. */
       function renameCenter(center, raw) {
@@ -4717,14 +4780,9 @@
           if (row.c1 === was) row.c1 = next;
           if (row.c2 === was) row.c2 = next;
         });
-        var moved = {};
-        Object.keys(state.flow).forEach(function (key) {
-          var pair = key.split("|");
-          if (pair[0] === was) pair[0] = next;
-          if (pair[1] === was) pair[1] = next;
-          moved[pair.join("|")] = state.flow[key];
+        rekeyFlows(function (end) {
+          return end.cid === was ? { cid: next, sid: end.sid } : end;
         });
-        state.flow = moved;
         save();
         saveFlow();
         return next;
@@ -4751,10 +4809,9 @@
         state.rows = state.rows.filter(function (row) {
           return row.c1 !== center.id && row.c2 !== center.id;
         });
-        Object.keys(state.flow).forEach(function (key) {
-          var pair = key.split("|");
-          if (pair[0] === center.id || pair[1] === center.id)
-            delete state.flow[key];
+        var gone = center.id;
+        rekeyFlows(function (end) {
+          return end.cid === gone ? null : end;
         });
         save();
         saveFlow();
@@ -5674,9 +5731,122 @@
         }
       }
 
-      function loadedTrips(from, to) {
-        var v = state.flow[from + "|" + to];
+      /* ------------------------------------------------------------------
+         Flows travel between stations, not between centers. A flow is keyed by
+         the station it leaves and the station it arrives at — "A.O|B.I" — so a
+         center with a waste output and a material input can send and receive on
+         the right ones. A case written before stations had names keys its flows
+         by center alone; those are read as the center's first output to the next
+         center's first input, which is what they always meant.
+         ------------------------------------------------------------------ */
+
+      function stationRef(c, st) {
+        return { cid: c.id, sid: st.id, c: c, st: st, key: c.id + "." + st.id };
+      }
+
+      /* fn is "in", "out" or "all": which stations belong on this axis. */
+      function stationOrder(fn) {
+        var out = [];
+        flowOrder().forEach(function (cid) {
+          var c = centerById(cid);
+          if (!c) return;
+          stationsOf(c).forEach(function (st) {
+            if (fn === "in" && !carriesIn(st)) return;
+            if (fn === "out" && !carriesOut(st)) return;
+            out.push(stationRef(c, st));
+          });
+        });
+        return out;
+      }
+
+      /* A row or column reads as its center's name while that center puts only
+         one station on the axis — which is how the deck's own matrices read — and
+         names the station as soon as there are two to tell apart. */
+      function axisLabels(order) {
+        var count = {};
+        order.forEach(function (r) {
+          count[r.cid] = (count[r.cid] || 0) + 1;
+        });
+        return order.map(function (r) {
+          return count[r.cid] > 1 ? r.cid + "\u00b7" + r.sid : r.cid;
+        });
+      }
+
+      function refOut(cid) {
+        var c = centerById(cid);
+        var st = c && (stationById(c, "O") || firstOut(c));
+        return st ? stationRef(c, st) : null;
+      }
+
+      function refIn(cid) {
+        var c = centerById(cid);
+        var st = c && (stationById(c, "I") || firstIn(c));
+        return st ? stationRef(c, st) : null;
+      }
+
+      function flowKey(fromRef, toRef) {
+        return fromRef.key + "|" + toRef.key;
+      }
+
+      function tripsOn(fromRef, toRef) {
+        if (!fromRef || !toRef) return 0;
+        var v = state.flow[flowKey(fromRef, toRef)];
         return typeof v === "number" && isFinite(v) && v > 0 ? v : 0;
+      }
+
+      function setTripsOn(fromRef, toRef, trips) {
+        var key = flowKey(fromRef, toRef);
+        if (!(trips > 0)) delete state.flow[key];
+        else state.flow[key] = trips;
+      }
+
+      /* Everything a center sends another, however many stations it crosses on. */
+      function loadedTrips(from, to) {
+        var total = 0;
+        Object.keys(state.flow).forEach(function (key) {
+          var ends = splitFlowKey(key);
+          if (!ends || ends.from.cid !== from || ends.to.cid !== to) return;
+          var v = state.flow[key];
+          if (typeof v === "number" && isFinite(v) && v > 0) total += v;
+        });
+        return total;
+      }
+
+      function splitFlowKey(key) {
+        var halves = String(key).split("|");
+        if (halves.length !== 2) return null;
+        var from = splitEnd(halves[0]);
+        var to = splitEnd(halves[1]);
+        return from && to ? { from: from, to: to } : null;
+      }
+
+      function splitEnd(half) {
+        var dot = half.indexOf(".");
+        if (dot < 0) return { cid: half, sid: null };
+        return { cid: half.slice(0, dot), sid: half.slice(dot + 1) };
+      }
+
+      /* Keys written before stations had names name only their centers. They are
+         rewritten once, against the primary pair, so nothing downstream has to
+         keep two shapes in mind. */
+      function migrateFlowKeys(flow) {
+        var out = {};
+        Object.keys(flow).forEach(function (key) {
+          var ends = splitFlowKey(key);
+          if (!ends) return;
+          if (ends.from.sid && ends.to.sid) {
+            out[key] = flow[key];
+            return;
+          }
+          var a = ends.from.sid ? null : refOut(ends.from.cid);
+          var b = ends.to.sid ? null : refIn(ends.to.cid);
+          var fromKey = a ? a.key : ends.from.cid + "." + ends.from.sid;
+          var toKey = b ? b.key : ends.to.cid + "." + ends.to.sid;
+          if (a === null && !ends.from.sid) return;
+          if (b === null && !ends.to.sid) return;
+          out[fromKey + "|" + toKey] = flow[key];
+        });
+        return out;
       }
 
       /* ------------------------------------------------------------------
@@ -5752,93 +5922,223 @@
         return { edges: to, cap: cap, first: first, next: next, total: total };
       }
 
-      /* Empty trips that balance every center, at least total travel. */
-      function solveEmpty(order) {
-        var n = order.length;
-        var arrivals = new Array(n).fill(0);
-        var departures = new Array(n).fill(0);
-        order.forEach(function (from, i) {
-          order.forEach(function (toId, j) {
-            var trips = loadedTrips(from, toId);
-            departures[i] += trips;
-            arrivals[j] += trips;
-          });
+      /* Empty trips that balance every station, at least total travel.
+
+         A vehicle unloads at an input station and must reach an output station to
+         pick up its next load. Supply is therefore what arrives at each input
+         station and demand is what departs from each output station, and the
+         cheapest empty plan is a transportation problem between the two. The
+         answer comes back keyed by station pair, so a matrix can lay its axes out
+         however it likes. */
+      function solveEmpty() {
+        var ins = stationOrder("in");
+        var outs = stationOrder("out");
+        var arrivals = {};
+        var departures = {};
+        ins.forEach(function (r) {
+          arrivals[r.key] = 0;
+        });
+        outs.forEach(function (r) {
+          departures[r.key] = 0;
         });
 
-        var empty = order.map(function () {
-          return new Array(n).fill(0);
+        Object.keys(state.flow).forEach(function (key) {
+          var v = state.flow[key];
+          if (!(typeof v === "number" && isFinite(v) && v > 0)) return;
+          var ends = splitFlowKey(key);
+          if (!ends || !ends.from.sid || !ends.to.sid) return;
+          var fromKey = ends.from.cid + "." + ends.from.sid;
+          var toKey = ends.to.cid + "." + ends.to.sid;
+          if (departures[fromKey] !== undefined) departures[fromKey] += v;
+          if (arrivals[toKey] !== undefined) arrivals[toKey] += v;
         });
-        var moved = arrivals.reduce(function (a, b) {
-          return a + b;
-        }, 0);
+
+        var empty = {};
+        var moved = 0;
+        ins.forEach(function (r) {
+          moved += arrivals[r.key];
+        });
         if (moved === 0)
-          return { empty: empty, arrivals: arrivals, departures: departures };
+          return {
+            empty: empty,
+            arrivals: arrivals,
+            departures: departures,
+            ins: ins,
+            outs: outs,
+          };
 
-        /* cost: from the arriving center's input station to the next pickup's
-           output station, along the aisles */
         var grid = buildGrid();
-        var cost = order.map(function (fromId) {
-          var a = centerById(fromId);
-          return order.map(function (toId) {
-            var b = centerById(toId);
-            if (!a || !b || !a.I || !b.O) return 1e4;
-            var si = stationAt(a, a.I);
-            var so = stationAt(b, b.O);
-            /* Unloading and reloading at the same center is an internal move:
-               the vehicle drives across the center from its input dock to its
-               output dock. It must not be routed around the block, which the
-               aisle grid treats as impassable. */
-            if (fromId === toId) {
-              return Math.abs(so.x - si.x) + Math.abs(so.y - si.y);
-            }
-            var d = aisleDistance(
-              grid,
-              { x: si.x + si.nx * CELL, y: si.y + si.ny * CELL },
-              { x: so.x + so.nx * CELL, y: so.y + so.ny * CELL },
-            );
-            return d === null ? 1e4 : d;
-          });
-        });
-
-        /* Reloading at the center you just unloaded at is the cheapest move
-           there is, and an operator takes it whenever it is available, so the
-           diagonal is filled first and only the remainder is optimised. This is
-           also what the course's own solution does. */
-        var supply = arrivals.slice();
-        var demand = departures.slice();
-        for (var k = 0; k < n; k++) {
-          var internal = Math.min(supply[k], demand[k]);
-          if (internal > 0) {
-            empty[k][k] = internal;
-            supply[k] -= internal;
-            demand[k] -= internal;
-          }
+        function legCost(from, to) {
+          var si = stationAt(from.c, from.st);
+          var so = stationAt(to.c, to.st);
+          /* Unloading and reloading inside one center is an internal move: the
+             vehicle drives across the center from one dock to the other. It must
+             not be routed around the block, which the aisle grid treats as
+             impassable. */
+          if (from.cid === to.cid)
+            return Math.abs(so.x - si.x) + Math.abs(so.y - si.y);
+          var d = aisleDistance(
+            grid,
+            { x: si.x + si.nx * CELL, y: si.y + si.ny * CELL },
+            { x: so.x + so.nx * CELL, y: so.y + so.ny * CELL },
+          );
+          return d === null ? 1e4 : d;
         }
 
-        var source = 2 * n;
+        var cost = ins.map(function (from) {
+          return outs.map(function (to) {
+            return legCost(from, to);
+          });
+        });
+
+        var supply = ins.map(function (r) {
+          return arrivals[r.key];
+        });
+        var demand = outs.map(function (r) {
+          return departures[r.key];
+        });
+
+        function record(i, j, amount) {
+          if (!(amount > 0)) return;
+          var key = ins[i].key + "|" + outs[j].key;
+          empty[key] = (empty[key] || 0) + amount;
+        }
+
+        /* Reloading at the center you just unloaded at is the cheapest move there
+           is, and an operator takes it whenever it is available, so every move
+           that stays inside one center is made first and only the remainder is
+           optimised. This is also what the course's own solution does. Where a
+           center has several docks on a side, the shortest crossing goes first. */
+        var internal = [];
+        ins.forEach(function (from, i) {
+          outs.forEach(function (to, j) {
+            if (from.cid === to.cid) internal.push({ i: i, j: j, d: cost[i][j] });
+          });
+        });
+        internal.sort(function (p, q) {
+          return p.d - q.d;
+        });
+        internal.forEach(function (pair) {
+          var amount = Math.min(supply[pair.i], demand[pair.j]);
+          if (!(amount > 0)) return;
+          record(pair.i, pair.j, amount);
+          supply[pair.i] -= amount;
+          demand[pair.j] -= amount;
+        });
+
+        var ni = ins.length;
+        var no = outs.length;
+        var source = ni + no;
         var sink = source + 1;
         var edges = [];
-        for (var i = 0; i < n; i++) {
+        for (var i = 0; i < ni; i++) {
           if (supply[i] > 0) edges.push([source, i, supply[i], 0]);
-          if (demand[i] > 0) edges.push([n + i, sink, demand[i], 0]);
-          for (var j = 0; j < n; j++) {
-            if (i !== j) edges.push([i, n + j, Infinity, cost[i][j]]);
+        }
+        for (var j = 0; j < no; j++) {
+          if (demand[j] > 0) edges.push([ni + j, sink, demand[j], 0]);
+        }
+        for (i = 0; i < ni; i++) {
+          for (j = 0; j < no; j++) {
+            if (ins[i].cid !== outs[j].cid)
+              edges.push([i, ni + j, Infinity, cost[i][j]]);
           }
         }
 
         var net = minCostFlow(sink + 1, edges, source, sink);
 
         /* read the assignment back off the residual capacities */
-        for (i = 0; i < n; i++) {
+        for (i = 0; i < ni; i++) {
           for (var e = net.first[i]; e !== -1; e = net.next[e]) {
             var v = net.edges[e];
-            if (v >= n && v < 2 * n && net.cap[e ^ 1] > 0) {
-              empty[i][v - n] += net.cap[e ^ 1];
+            if (v >= ni && v < ni + no && net.cap[e ^ 1] > 0) {
+              record(i, v - ni, net.cap[e ^ 1]);
             }
           }
         }
 
-        return { empty: empty, arrivals: arrivals, departures: departures };
+        return {
+          empty: empty,
+          arrivals: arrivals,
+          departures: departures,
+          ins: ins,
+          outs: outs,
+        };
+      }
+
+      /* ------------------------------------------------------------------
+         The three matrices — flows, distances, travel — answer the same set of
+         trips, so they share one pair of axes and one way of reading a cell.
+         ------------------------------------------------------------------ */
+
+      function cellLoaded(from, to) {
+        return carriesOut(from.st) && carriesIn(to.st) ? tripsOn(from, to) : 0;
+      }
+
+      function cellEmpty(empty, from, to) {
+        if (!carriesIn(from.st) || !carriesOut(to.st)) return 0;
+        var v = empty[from.key + "|" + to.key];
+        return v > 0 ? Math.round(v * 1000) / 1000 : 0;
+      }
+
+      function cellDistance(grid, from, to, metric) {
+        var sa = stationAt(from.c, from.st);
+        var sb = stationAt(to.c, to.st);
+        if (!sa || !sb) return null;
+        /* Unload and reload inside one center: the vehicle drives across the
+           block, which the aisle grid treats as impassable, so measure it
+           straight through. */
+        if (from.cid === to.cid)
+          return Math.abs(sb.x - sa.x) + Math.abs(sb.y - sa.y);
+        if (metric !== "Aisle") return metricBetween(sa, sb, metric, grid);
+        return aisleDistance(
+          grid,
+          { x: sa.x + sa.nx * CELL, y: sa.y + sa.ny * CELL },
+          { x: sb.x + sb.nx * CELL, y: sb.y + sb.ny * CELL },
+        );
+      }
+
+      /* Loaded trips leave an output and arrive at an input, so on their own they
+         need only those two axes — which, for a center with one dock on each
+         side, is the deck's own square matrix. Empty trips run the other way,
+         from an input to an output, so showing them puts every station on both
+         axes. A station that neither sends nor receives can then be folded away,
+         which is what keeps a large case readable. */
+      function flowAxes(empty, bothWays) {
+        var rows = bothWays ? stationOrder("all") : stationOrder("out");
+        var cols = bothWays ? stationOrder("all") : stationOrder("in");
+        function live(from, to) {
+          return cellLoaded(from, to) > 0 || cellEmpty(empty, from, to) > 0;
+        }
+        /* Names are settled before anything is folded away, so a station keeps
+           the name it had on the full axis: a row reading "MP" once its sibling
+           is hidden would leave no way to tell which dock it is. */
+        var rowNames = axisLabels(rows);
+        var colNames = axisLabels(cols);
+        if (state.hideQuiet) {
+          var keepRow = rows.map(function (from) {
+            return cols.some(function (to) {
+              return live(from, to);
+            });
+          });
+          var keepCol = cols.map(function (to) {
+            return rows.some(function (from) {
+              return live(from, to);
+            });
+          });
+          rowNames = rowNames.filter(function (_, i) {
+            return keepRow[i];
+          });
+          colNames = colNames.filter(function (_, j) {
+            return keepCol[j];
+          });
+          rows = rows.filter(function (_, i) {
+            return keepRow[i];
+          });
+          cols = cols.filter(function (_, j) {
+            return keepCol[j];
+          });
+        }
+        return { rows: rows, cols: cols, rowNames: rowNames, colNames: colNames };
       }
 
       function renderFlow() {
@@ -5846,18 +6146,34 @@
         if (!table) return;
         while (table.firstChild) table.removeChild(table.firstChild);
 
-        var order = flowOrder();
-        var n = order.length;
-        var solved = solveEmpty(order);
+        var solved = solveEmpty();
         var empty = solved.empty;
+
+        var axes = flowAxes(empty, state.showEmpty);
+        var rows = axes.rows;
+        var cols = axes.cols;
+        var rowNames = axes.rowNames;
+        var colNames = axes.colNames;
+
+        function loadedAt(from, to) {
+          return cellLoaded(from, to);
+        }
+        function emptyAt(from, to) {
+          return cellEmpty(empty, from, to);
+        }
 
         var thead = el("thead");
         var headRow = el("tr");
         headRow.appendChild(el("th", { class: "corner", text: "From / To" }));
-        order.forEach(function (id) {
-          headRow.appendChild(el("th", { text: id }));
+        colNames.forEach(function (name) {
+          headRow.appendChild(el("th", { text: name }));
         });
-        ["Loaded", "Empty", "Total from"].forEach(function (label) {
+        /* With empty trips hidden the axes carry loaded legs only, so a column of
+           zeroes headed "Empty" would be a statement, not a blank. */
+        var margins = state.showEmpty
+          ? ["Loaded", "Empty", "Total from"]
+          : ["Loaded"];
+        margins.forEach(function (label) {
           headRow.appendChild(el("th", { class: "total", text: label }));
         });
         thead.appendChild(headRow);
@@ -5866,26 +6182,29 @@
         var tbody = el("tbody");
         var loadedTotal = 0;
         var emptyTotal = 0;
-        var colLoaded = new Array(n).fill(0);
-        var colEmpty = new Array(n).fill(0);
+        var colLoaded = new Array(cols.length).fill(0);
+        var colEmpty = new Array(cols.length).fill(0);
 
-        order.forEach(function (from, i) {
+        rows.forEach(function (from, i) {
           var tr = el("tr");
-          tr.appendChild(el("td", { class: "rowhead", text: from }));
+          tr.appendChild(el("td", { class: "rowhead", text: rowNames[i] }));
           var rowLoaded = 0;
           var rowEmpty = 0;
 
-          order.forEach(function (toId, j) {
-            var cell = el("td", { class: i === j ? "diag" : "" });
+          cols.forEach(function (to, j) {
+            var internal = from.cid === to.cid;
+            var cell = el("td", { class: internal ? "diag" : "" });
             var box = el("div", { class: "cellbox" });
             cell.appendChild(box);
-            var trips = loadedTrips(from, toId);
+            var trips = loadedAt(from, to);
             rowLoaded += trips;
             colLoaded[j] += trips;
 
-            /* A center never ships a loaded trip to itself, so the diagonal takes
-               no input — it carries only the unload-to-reload move. */
-            if (i !== j) {
+            /* A center never ships a loaded trip to itself, so those cells take
+               no input — they carry only the unload-to-reload move. A cell whose
+               stations cannot face each other takes none either. */
+            var editable = !internal && carriesOut(from.st) && carriesIn(to.st);
+            if (editable) {
               var input = el("input", { type: "number", min: "0", step: "1" });
               input.value = trips ? String(trips) : "";
               /* Green marks the one kind of figure on this page a person put
@@ -5893,23 +6212,22 @@
               if (trips) input.className = "entered";
               input.setAttribute(
                 "aria-label",
-                from + " to " + toId + " loaded trips",
+                rowNames[i] + " to " + colNames[j] + " loaded trips",
               );
               input.addEventListener("change", function () {
                 var v = parseFloat(input.value);
-                if (isNaN(v) || v <= 0) delete state.flow[from + "|" + toId];
-                else state.flow[from + "|" + toId] = v;
+                setTripsOn(from, to, isNaN(v) ? 0 : v);
                 saveFlow();
                 renderFlow();
               });
               box.appendChild(input);
             }
 
-            var e = Math.round(empty[i][j] * 1000) / 1000;
+            var e = emptyAt(from, to);
             rowEmpty += e;
             colEmpty[j] += e;
             if (state.showEmpty && e > 0) {
-              cell.className = (i === j ? "diag " : "") + "hasempty";
+              cell.className = (internal ? "diag " : "") + "hasempty";
               var field = box.querySelector("input");
               if (field && !trips) {
                 /* No loaded trips here, so the empty value rides in the field's
@@ -5927,10 +6245,12 @@
           loadedTotal += rowLoaded;
           emptyTotal += rowEmpty;
           tr.appendChild(el("td", { class: "total", text: String(rowLoaded) }));
-          tr.appendChild(el("td", { class: "total", text: String(rowEmpty) }));
-          tr.appendChild(
-            el("td", { class: "total", text: String(rowLoaded + rowEmpty) }),
-          );
+          if (state.showEmpty) {
+            tr.appendChild(el("td", { class: "total", text: String(rowEmpty) }));
+            tr.appendChild(
+              el("td", { class: "total", text: String(rowLoaded + rowEmpty) }),
+            );
+          }
           tbody.appendChild(tr);
         });
         table.appendChild(tbody);
@@ -5947,61 +6267,93 @@
           });
           return tr;
         }
-        tfoot.appendChild(
-          footRow("Loaded", colLoaded, [String(loadedTotal), "", ""]),
-        );
-        tfoot.appendChild(footRow("Empty", colEmpty, ["", String(emptyTotal), ""]));
-        tfoot.appendChild(
-          footRow(
-            "Total to",
-            colLoaded.map(function (v, j) {
-              return v + colEmpty[j];
-            }),
-            ["", "", String(loadedTotal + emptyTotal)],
-          ),
-        );
+        if (state.showEmpty) {
+          tfoot.appendChild(
+            footRow("Loaded", colLoaded, [String(loadedTotal), "", ""]),
+          );
+          tfoot.appendChild(
+            footRow("Empty", colEmpty, ["", String(emptyTotal), ""]),
+          );
+          tfoot.appendChild(
+            footRow(
+              "Total to",
+              colLoaded.map(function (v, j) {
+                return v + colEmpty[j];
+              }),
+              ["", "", String(loadedTotal + emptyTotal)],
+            ),
+          );
+        } else {
+          tfoot.appendChild(footRow("Loaded", colLoaded, [String(loadedTotal)]));
+        }
         table.appendChild(tfoot);
 
         /* Every center must balance, and the two grand totals must agree. */
         var problems = [];
-        order.forEach(function (id, i) {
-          var from = 0,
-            to = 0;
-          order.forEach(function (other, j) {
-            from += loadedTrips(id, other) + empty[i][j];
-            to += loadedTrips(other, id) + empty[j][i];
-          });
-          if (Math.abs(from - to) > 0.001) {
+        var balance = {};
+        state.centers.forEach(function (c) {
+          balance[c.id] = { out: 0, in: 0 };
+        });
+        Object.keys(state.flow).forEach(function (key) {
+          var v = state.flow[key];
+          if (!(v > 0)) return;
+          var ends = splitFlowKey(key);
+          if (!ends) return;
+          if (balance[ends.from.cid]) balance[ends.from.cid].out += v;
+          if (balance[ends.to.cid]) balance[ends.to.cid].in += v;
+        });
+        Object.keys(empty).forEach(function (key) {
+          var v = empty[key];
+          if (!(v > 0)) return;
+          var ends = splitFlowKey(key);
+          if (!ends) return;
+          if (balance[ends.from.cid]) balance[ends.from.cid].out += v;
+          if (balance[ends.to.cid]) balance[ends.to.cid].in += v;
+        });
+        Object.keys(balance).forEach(function (id) {
+          var b = balance[id];
+          if (Math.abs(b.out - b.in) > 0.001) {
             problems.push(
               id +
                 " does not balance: " +
-                from.toFixed(1) +
+                b.out.toFixed(1) +
                 " out, " +
-                to.toFixed(1) +
+                b.in.toFixed(1) +
                 " in.",
             );
           }
         });
-        if (Math.abs(loadedTotal - emptyTotal) > 0.001) {
+        /* Counted over the whole solution rather than the visible axes: hiding
+           the empty trips does not make them stop happening. */
+        var allLoaded = 0;
+        Object.keys(state.flow).forEach(function (key) {
+          var v = state.flow[key];
+          if (v > 0) allLoaded += v;
+        });
+        var allEmpty = 0;
+        Object.keys(empty).forEach(function (key) {
+          if (empty[key] > 0) allEmpty += empty[key];
+        });
+        if (Math.abs(allLoaded - allEmpty) > 0.001) {
           problems.push(
             "Loaded trips (" +
-              loadedTotal +
+              Math.round(allLoaded) +
               ") and empty trips (" +
-              emptyTotal +
+              Math.round(allEmpty) +
               ") should match: every load is followed by one empty move.",
           );
         }
 
-        var box = document.getElementById("flow-issues");
-        while (box.firstChild) box.removeChild(box.firstChild);
+        var box2 = document.getElementById("flow-issues");
+        while (box2.firstChild) box2.removeChild(box2.firstChild);
         if (problems.length) {
-          box.appendChild(el("strong", { text: problems.length + " to check" }));
+          box2.appendChild(el("strong", { text: problems.length + " to check" }));
           problems.forEach(function (msg) {
-            box.appendChild(el("span", { text: msg }));
+            box2.appendChild(el("span", { text: msg }));
           });
-          box.hidden = false;
+          box2.hidden = false;
         } else {
-          box.hidden = true;
+          box2.hidden = true;
         }
 
         /* The distances below answer the same set of trips, so they follow the
@@ -6075,41 +6427,44 @@
       }
 
       /* Every trip that runs, with the two points it runs between. A loaded trip
-         goes output -> input, an empty one input -> output. */
+         goes output -> input, an empty one input -> output, and both are read off
+         the station pair they were keyed by rather than guessed from the centers,
+         so a flow sent to a waste dock is drawn arriving at that dock. */
       function flowRoutes() {
-        var order = flowOrder();
-        var empty = solveEmpty(order).empty;
+        var solved = solveEmpty();
         var routes = [];
-        order.forEach(function (fromId, i) {
-          var a = centerById(fromId);
-          if (!a) return;
-          order.forEach(function (toId, j) {
-            var b = centerById(toId);
-            if (!b || i === j) return;
-            var loaded = loadedTrips(fromId, toId);
-            if (state.graphLoaded && loaded > 0 && a.O && b.I) {
-              routes.push({
-                kind: "loaded",
-                trips: loaded,
-                fromId: fromId,
-                toId: toId,
-                from: stationAt(a, a.O),
-                to: stationAt(b, b.I),
-              });
-            }
-            var e = empty[i][j];
-            if (state.graphEmpty && e > 0 && a.I && b.O) {
-              routes.push({
-                kind: "empty",
-                trips: e,
-                fromId: fromId,
-                toId: toId,
-                from: stationAt(a, a.I),
-                to: stationAt(b, b.O),
-              });
-            }
+
+        function push(kind, key, trips) {
+          if (!(trips > 0)) return;
+          var ends = splitFlowKey(key);
+          if (!ends || !ends.from.sid || !ends.to.sid) return;
+          if (ends.from.cid === ends.to.cid) return;
+          var a = centerById(ends.from.cid);
+          var b = centerById(ends.to.cid);
+          if (!a || !b) return;
+          var sa = stationById(a, ends.from.sid);
+          var sb = stationById(b, ends.to.sid);
+          if (!sa || !sb) return;
+          routes.push({
+            kind: kind,
+            trips: trips,
+            fromId: a.id,
+            toId: b.id,
+            from: stationAt(a, sa),
+            to: stationAt(b, sb),
           });
-        });
+        }
+
+        if (state.graphLoaded) {
+          Object.keys(state.flow).forEach(function (key) {
+            push("loaded", key, state.flow[key]);
+          });
+        }
+        if (state.graphEmpty) {
+          Object.keys(solved.empty).forEach(function (key) {
+            push("empty", key, solved.empty[key]);
+          });
+        }
         return routes;
       }
 
@@ -6481,9 +6836,10 @@
         if (!table) return;
         while (table.firstChild) table.removeChild(table.firstChild);
 
-        var order = flowOrder();
-        var n = order.length;
-        var empty = solveEmpty(order).empty;
+        var empty = solveEmpty().empty;
+        /* Slides 13 and 14 answer every trip that runs, loaded and empty alike,
+           so they keep both axes whatever the flow matrix above is showing. */
+        var axes = flowAxes(empty, true);
         var grid = buildGrid();
         var metric = state.distMetric;
         var all = state.distAll;
@@ -6491,38 +6847,47 @@
         var thead = el("thead");
         var headRow = el("tr");
         headRow.appendChild(el("th", { class: "corner", text: "From / To" }));
-        order.forEach(function (id) {
-          headRow.appendChild(el("th", { text: id }));
+        axes.colNames.forEach(function (name) {
+          headRow.appendChild(el("th", { text: name }));
         });
         thead.appendChild(headRow);
         table.appendChild(thead);
 
         var tbody = el("tbody");
-        order.forEach(function (from, i) {
+        axes.rows.forEach(function (from, i) {
           var tr = el("tr");
-          tr.appendChild(el("td", { class: "rowhead", text: from }));
-          order.forEach(function (toId, j) {
-            var cell = el("td", { class: i === j ? "diag" : "" });
+          tr.appendChild(el("td", { class: "rowhead", text: axes.rowNames[i] }));
+          axes.cols.forEach(function (to) {
+            var internal = from.cid === to.cid;
+            var cell = el("td", { class: internal ? "diag" : "" });
             var box = el("div", { class: "cellbox" });
             cell.appendChild(box);
 
-            var trips = i === j ? 0 : loadedTrips(from, toId);
-            var e = empty[i][j];
+            var trips = cellLoaded(from, to);
+            var e = cellEmpty(empty, from, to);
 
-            if (all || trips > 0) {
-              if (i !== j) {
-                var dl = tripDistance(grid, from, toId, "loaded", metric);
+            /* The direction a cell measures is settled by the stations it stands
+               on: an output to an input is a loaded leg, an input to an output an
+               empty one. The two can meet in one cell only while a station serves
+               both ways. */
+            if (trips > 0 || (all && carriesOut(from.st) && carriesIn(to.st))) {
+              if (!internal) {
                 box.appendChild(
-                  el("span", { class: "loaded", text: fmtDistance(dl) }),
+                  el("span", {
+                    class: "loaded",
+                    text: fmtDistance(cellDistance(grid, from, to, metric)),
+                  }),
                 );
               }
             }
-            if (all || e > 0) {
-              var de = tripDistance(grid, from, toId, "empty", metric);
+            if (e > 0 || (all && carriesIn(from.st) && carriesOut(to.st))) {
               box.appendChild(
-                el("span", { class: "empty", text: fmtDistance(de) }),
+                el("span", {
+                  class: "empty",
+                  text: fmtDistance(cellDistance(grid, from, to, metric)),
+                }),
               );
-              if (e > 0) cell.className = (i === j ? "diag " : "") + "hasempty";
+              if (e > 0) cell.className = (internal ? "diag " : "") + "hasempty";
             }
             tr.appendChild(cell);
           });
@@ -6551,9 +6916,11 @@
         while (table.firstChild) table.removeChild(table.firstChild);
         while (summary.firstChild) summary.removeChild(summary.firstChild);
 
-        var order = flowOrder();
-        var n = order.length;
-        var empty = solveEmpty(order).empty;
+        var empty = solveEmpty().empty;
+        var axes = flowAxes(empty, true);
+        var order = axes.rows;
+        var cols = axes.cols;
+        var n = cols.length;
         var grid = buildGrid();
         var metric = state.distMetric;
 
@@ -6568,16 +6935,14 @@
           eTrips[i] = [];
           lTravel[i] = [];
           eTravel[i] = [];
-          order.forEach(function (toId, j) {
-            var t = i === j ? 0 : loadedTrips(from, toId);
-            var e = empty[i][j];
-            var dl =
-              t > 0 ? tripDistance(grid, from, toId, "loaded", metric) : null;
-            var de = e > 0 ? tripDistance(grid, from, toId, "empty", metric) : null;
+          cols.forEach(function (to, j) {
+            var t = from.cid === to.cid ? 0 : cellLoaded(from, to);
+            var e = cellEmpty(empty, from, to);
+            var d = t > 0 || e > 0 ? cellDistance(grid, from, to, metric) : null;
             lTrips[i][j] = t;
             eTrips[i][j] = e;
-            lTravel[i][j] = dl === null ? 0 : t * dl;
-            eTravel[i][j] = de === null ? 0 : e * de;
+            lTravel[i][j] = d === null ? 0 : t * d;
+            eTravel[i][j] = d === null ? 0 : e * d;
           });
         });
 
@@ -6588,7 +6953,7 @@
         }
         function sumCol(m, j) {
           var s = 0;
-          for (var i = 0; i < n; i++) s += m[i][j];
+          for (var i = 0; i < m.length; i++) s += m[i][j];
           return s;
         }
         function ratio(travel, trips) {
@@ -6598,8 +6963,8 @@
         var thead = el("thead");
         var head = el("tr");
         head.appendChild(el("th", { class: "corner", text: "From / To" }));
-        order.forEach(function (id) {
-          head.appendChild(el("th", { text: id }));
+        axes.colNames.forEach(function (name) {
+          head.appendChild(el("th", { text: name }));
         });
         ["Loaded", "Empty", "Total", "Average"].forEach(function (label) {
           head.appendChild(el("th", { class: "total", text: label }));
@@ -6610,9 +6975,10 @@
         var tbody = el("tbody");
         order.forEach(function (from, i) {
           var tr = el("tr");
-          tr.appendChild(el("td", { class: "rowhead", text: from }));
-          order.forEach(function (toId, j) {
-            var cell = el("td", { class: i === j ? "diag" : "" });
+          tr.appendChild(el("td", { class: "rowhead", text: axes.rowNames[i] }));
+          cols.forEach(function (to, j) {
+            var internal = from.cid === to.cid;
+            var cell = el("td", { class: internal ? "diag" : "" });
             var box = el("div", { class: "cellbox" });
             cell.appendChild(box);
             if (lTravel[i][j] > 0) {
@@ -6627,7 +6993,7 @@
               box.appendChild(
                 el("span", { class: "empty", text: String(round0(eTravel[i][j])) }),
               );
-              cell.className = (i === j ? "diag " : "") + "hasempty";
+              cell.className = (internal ? "diag " : "") + "hasempty";
             }
             tr.appendChild(cell);
           });
@@ -6650,7 +7016,7 @@
         var totalEmpty = 0;
         var totalLTrips = 0;
         var totalETrips = 0;
-        for (var i = 0; i < n; i++) {
+        for (var i = 0; i < order.length; i++) {
           totalLoaded += sumRow(lTravel, i);
           totalEmpty += sumRow(eTravel, i);
           totalLTrips += sumRow(lTrips, i);
@@ -6790,16 +7156,24 @@
         renderTravel();
       });
 
+      document
+        .getElementById("hide-quiet")
+        .addEventListener("change", function (ev) {
+          state.hideQuiet = ev.target.checked;
+          renderFlow();
+        });
+
       document.getElementById("dist-all").addEventListener("change", function (ev) {
         state.distAll = ev.target.checked;
         renderDistance();
       });
 
       document.getElementById("reset-flow").addEventListener("click", function () {
-        state.flow = {};
+        var seeded = {};
         Object.keys(COURSE_FLOW).forEach(function (k) {
-          state.flow[k] = COURSE_FLOW[k];
+          seeded[k] = COURSE_FLOW[k];
         });
+        state.flow = migrateFlowKeys(seeded);
         saveFlow();
         renderFlow();
       });
@@ -6997,7 +7371,7 @@
       state.kinds = geo.kinds;
       state.centers = geo.centers;
       state.rows = load();
-      state.flow = loadFlow();
+      state.flow = migrateFlowKeys(loadFlow());
       loadFilters();
       buildLegend();
       buildCurveLegend();
@@ -7013,7 +7387,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261002151435";
+      window.__BUILD__ = "20261002224353";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
