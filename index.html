@@ -1036,6 +1036,100 @@
          of the position field. Written as .params.station-pair so it outranks the
          generic .params rule, which sets flex-wrap: wrap later in the sheet and
          would otherwise stack the two controls onto separate lines. */
+      .flowtable.compare th,
+      .flowtable.compare td {
+        white-space: nowrap;
+      }
+
+      .flowtable.compare tbody tr.live td {
+        font-style: italic;
+      }
+
+      .flowtable.compare td.bestcell {
+        background: var(--entered-fill, #e6f4ea);
+        color: var(--entered-line, #0a6b2b);
+        font-weight: 700;
+      }
+
+      .casebar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 12px;
+        padding: 8px 10px;
+        border: 1px solid var(--line, #d7dce2);
+        border-radius: 4px;
+        background: var(--panel, #fbfbf9);
+      }
+
+      .casebar select {
+        min-width: 170px;
+      }
+
+      .case-note {
+        font-size: 12px;
+        color: var(--muted, #5a6572);
+      }
+
+      .flow-entry {
+        margin: 10px 0 14px;
+        display: inline-block;
+        min-width: 520px;
+      }
+
+      .flow-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 3px 0;
+      }
+
+      .flow-row.head {
+        font-size: 12px;
+        color: var(--muted, #5a6572);
+        border-bottom: 1px solid var(--rule, #d7dce2);
+        padding-bottom: 4px;
+        margin-bottom: 4px;
+      }
+
+      .flow-row.head span:nth-child(1),
+      .flow-row.head span:nth-child(2) {
+        width: 186px;
+      }
+
+      .flow-row.draft {
+        background: var(--entered-fill, #e6f4ea);
+      }
+
+      .flow-end {
+        display: inline-flex;
+        gap: 4px;
+        width: 186px;
+      }
+
+      .flow-end select {
+        width: auto;
+        min-width: 72px;
+        flex: 1;
+      }
+
+      .flow-row input.num {
+        width: 76px;
+      }
+
+      .entered-text {
+        font-weight: 700;
+        color: var(--entered-line, #0a6b2b);
+      }
+
+      .pick {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+      }
+
       .kinds {
         margin: 14px 0 6px;
       }
@@ -1532,6 +1626,18 @@
         </p>
       </header>
 
+      <div class="casebar">
+        <label class="pick">
+          Case
+          <select id="case-pick"></select>
+        </label>
+        <button id="case-save" type="button">Save</button>
+        <button id="case-saveas" type="button">Save as&hellip;</button>
+        <button id="case-rename" type="button">Rename</button>
+        <button id="case-delete" type="button">Delete</button>
+        <span class="case-note" id="case-note"></span>
+      </div>
+
       <nav class="tabs" role="tablist">
         <button
           class="tab current"
@@ -1573,6 +1679,20 @@
               <button class="primary" id="add-center" type="button">
                 Add center
               </button>
+              <label class="pick">
+                New centers get
+                <select id="station-preset">
+                  <option value="in-out">an input and an output</option>
+                  <option value="io">one input-output station</option>
+                </select>
+              </label>
+              <label class="pick">
+                Measure in
+                <select id="units">
+                  <option value="m">meters</option>
+                  <option value="ft">feet</option>
+                </select>
+              </label>
               <button id="reset-geo" type="button">Reset to Layout 0</button>
             </div>
           </div>
@@ -1619,10 +1739,10 @@
                   <th>Short name</th>
                   <th>Description</th>
                   <th>Kind</th>
-                  <th>x</th>
-                  <th>y</th>
-                  <th>width</th>
-                  <th>height</th>
+                  <th data-unit="x">x</th>
+                  <th data-unit="y">y</th>
+                  <th data-unit="width">width</th>
+                  <th data-unit="height">height</th>
                   <th>I/O stations</th>
                   <th></th>
                 </tr>
@@ -1630,6 +1750,26 @@
               <tbody id="geo-rows"></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="panel compare">
+          <div class="scale-head">
+            <h2>Case comparison</h2>
+            <button id="compare-refresh" type="button">Rescore</button>
+          </div>
+
+          <p class="scale-lede">
+            Every saved case scored against the one on screen &mdash; the proximity
+            design score it earns, and the travel its flows generate. Each case
+            carries its own centers, stations, relationships and flows, so an
+            alternative layout is made by saving the current one under a new name
+            and moving things; both stay on this table.
+          </p>
+
+          <div class="scalewrap">
+            <table class="flowtable compare" id="compare-grid"></table>
+          </div>
+          <p class="note" id="compare-note"></p>
         </section>
       </div>
 
@@ -1737,7 +1877,7 @@
                 <tr>
                   <th>Desired proximity</th>
                   <th>Form</th>
-                  <th>Parameters (meters)</th>
+                  <th data-unit="Parameters">Parameters</th>
                   <th>Drawn as</th>
                 </tr>
               </thead>
@@ -1898,7 +2038,13 @@
                   <th class="rule-left">Between</th>
                   <th>Distance metric</th>
                   <th class="rule-left">weight</th>
-                  <th class="rule-left" style="text-align: right">Distance</th>
+                  <th
+                    class="rule-left"
+                    style="text-align: right"
+                    data-unit="Distance"
+                  >
+                    Distance
+                  </th>
                   <th style="text-align: right">Satisfaction</th>
                   <th style="text-align: right">Contribution</th>
                 </tr>
@@ -1935,6 +2081,13 @@
                 <input id="hide-quiet" type="checkbox" />
                 Hide stations with no flow
               </span>
+              <label class="pick">
+                Enter flows as
+                <select id="flow-entry">
+                  <option value="matrix">a matrix</option>
+                  <option value="list">a list</option>
+                </select>
+              </label>
               <button id="reset-flow" type="button">Load the course example</button>
               <button id="clear-flow" type="button">Clear</button>
             </div>
@@ -1951,6 +2104,16 @@
             The diagonal takes no input, because a center never ships a loaded trip
             to itself.
           </p>
+
+          <p class="scale-lede">
+            Once centers carry several stations the matrix grows faster than it
+            stays readable, so the flows can be typed as a list instead &mdash; one
+            line per flow that actually runs, naming the station it leaves and the
+            station it arrives at. The matrix below then depicts what the list says;
+            it is the same figures either way.
+          </p>
+
+          <div class="flow-entry" id="flow-list" hidden></div>
 
           <div class="issues" id="flow-issues" hidden></div>
 
@@ -2018,7 +2181,7 @@
 
         <section class="panel flow">
           <div class="scale-head">
-            <h2>Distance matrix</h2>
+            <h2 data-unit="Distance matrix">Distance matrix</h2>
             <div class="geo-tools">
               <label class="constraint-cell">
                 Metric
@@ -2365,6 +2528,9 @@
         flow: {},
         showEmpty: true,
         hideQuiet: false,
+        flowEntry: "matrix",
+        units: "m",
+        stationPreset: "in-out",
         distMetric: "Aisle",
         distAll: false,
         showProx: {},
@@ -2973,12 +3139,8 @@
             return;
           }
 
-          var rounded = Math.round(distance * 10) / 10;
-          setCell(
-            row.cells.dist,
-            rounded.toFixed(1),
-            rounded === 0 ? "zero" : null,
-          );
+          var shown = Math.round(toUnits(distance) * 10) / 10;
+          setCell(row.cells.dist, shown.toFixed(1), shown === 0 ? "zero" : null);
 
           var sat = satisfaction(row.proximity, distance);
           setCell(row.cells.sat, sat.toFixed(2), sat === 0 ? "zero" : null);
@@ -3379,6 +3541,43 @@
       }
       var EDGES = ["top", "right", "bottom", "left"];
 
+      /* Lengths are held in meters wherever they are stored, computed or compared,
+         and converted only where a person reads or types one. Switching units
+         therefore cannot move a score: it changes what the numbers are called, not
+         what they are. */
+      var FEET_PER_METRE = 3.280839895;
+
+      function toUnits(metres) {
+        return state.units === "ft" ? metres * FEET_PER_METRE : metres;
+      }
+
+      function fromUnits(value) {
+        return state.units === "ft" ? value / FEET_PER_METRE : value;
+      }
+
+      function unitLabel() {
+        return state.units === "ft" ? "ft" : "m";
+      }
+
+      /* Enough places for a foot to survive the round trip from a half-metre
+         grid, without printing the whole binary tail. */
+      function inUnits(metres, places) {
+        var p = places === undefined ? 2 : places;
+        var v = toUnits(metres);
+        return String(Math.round(v * Math.pow(10, p)) / Math.pow(10, p));
+      }
+
+      /* Every label that names a unit, rewritten in one pass. */
+      function paintUnits() {
+        var u = unitLabel();
+        var selector = "[data-unit]";
+        var nodes = document.querySelectorAll(selector);
+        for (var i = 0; i < nodes.length; i++) {
+          nodes[i].textContent =
+            nodes[i].getAttribute("data-unit") + " (" + u + ")";
+        }
+      }
+
       /* A center's I/O stations. The deck names the usual three — Input, Output,
          Input-output — but a center may carry any number of them under whatever id
          the user writes: Material Input (MI), Waste Output (WO), People I/O (PIO).
@@ -3516,6 +3715,8 @@
           bindPrimaryStations(c);
           if (typeof c.note !== "string") c.note = "";
         });
+        if (geo.units !== "ft" && geo.units !== "m") geo.units = "m";
+        if (!STATION_PRESETS[geo.stationPreset]) geo.stationPreset = "in-out";
         if (!Array.isArray(geo.kinds) || !geo.kinds.length) {
           geo.kinds = DEFAULT_KINDS.map(function (k) {
             return { id: k.id, fill: k.fill };
@@ -3560,6 +3761,8 @@
             GEO_KEY,
             JSON.stringify({
               building: state.building,
+              units: state.units,
+              stationPreset: state.stationPreset,
               kinds: kindList(),
               centers: state.centers.map(serializeCenter),
             }),
@@ -4665,12 +4868,15 @@
               step: "0.5",
               min: "0",
             });
-            input.value = String(c[key]);
-            input.setAttribute("aria-label", c.id + " " + key);
+            input.value = inUnits(c[key]);
+            input.setAttribute(
+              "aria-label",
+              c.id + " " + key + " in " + unitLabel(),
+            );
             input.addEventListener("input", function () {
               var value = parseFloat(input.value);
               if (isNaN(value)) return;
-              c[key] = value;
+              c[key] = fromUnits(value);
               buildLayout();
               evaluate();
               saveGeometry();
@@ -4720,6 +4926,465 @@
 
       /* Everything that reads the set of centers, redrawn in one call. Used
          whenever a center is added, removed or renamed. */
+      /* ------------------------------------------------------------------
+         Named cases. A case is everything that describes the problem — the
+         building and its centers with their stations, the center types, the units,
+         the qualitative relationships, the importance scale, the satisfaction
+         curves and the flows. It is not the view: which tab is open and which
+         legend filters are on belong to the person, not to the case.
+
+         The working draft keeps saving itself exactly as it always did, so nothing
+         is lost by never naming a case. Saving one takes a copy under a name;
+         loading one puts that copy back.
+         ------------------------------------------------------------------ */
+
+      var CASES_KEY = "isye6202.layout.cases.v1";
+
+      function readCases() {
+        try {
+          var raw = window.localStorage.getItem(CASES_KEY);
+          var parsed = raw ? JSON.parse(raw) : null;
+          if (parsed && parsed.cases && typeof parsed.cases === "object") {
+            return { current: parsed.current || "", cases: parsed.cases };
+          }
+        } catch (err) {
+          /* blocked or corrupt storage — start from no saved cases */
+        }
+        return { current: "", cases: {} };
+      }
+
+      function writeCases(store) {
+        try {
+          window.localStorage.setItem(CASES_KEY, JSON.stringify(store));
+        } catch (err) {
+          window.alert("This browser would not store the case.");
+        }
+      }
+
+      function snapshotCase() {
+        return {
+          saved: new Date().toISOString(),
+          geometry: {
+            building: { w: state.building.w, h: state.building.h },
+            units: state.units,
+            kinds: kindList().map(function (k) {
+              return { id: k.id, fill: k.fill };
+            }),
+            centers: state.centers.map(serializeCenter),
+          },
+          rows: JSON.parse(JSON.stringify(state.rows)),
+          levels: JSON.parse(JSON.stringify(state.levels)),
+          curves: JSON.parse(JSON.stringify(state.curves)),
+          flow: JSON.parse(JSON.stringify(state.flow)),
+        };
+      }
+
+      function applyCase(snap) {
+        var geo = normalizeStations(JSON.parse(JSON.stringify(snap.geometry)));
+        state.building = geo.building;
+        state.units = geo.units;
+        state.stationPreset = geo.stationPreset;
+        state.kinds = geo.kinds;
+        state.centers = geo.centers;
+        state.rows = JSON.parse(JSON.stringify(snap.rows || []));
+        state.levels = JSON.parse(JSON.stringify(snap.levels || state.levels));
+        state.curves = JSON.parse(JSON.stringify(snap.curves || state.curves));
+        state.flow = migrateFlowKeys(JSON.parse(JSON.stringify(snap.flow || {})));
+
+        /* The rows carry live cell references to a table that is about to be
+           rebuilt, so they are dropped and rebuilt with it. */
+        state.rows.forEach(function (row) {
+          row.cells = null;
+        });
+
+        /* save() writes the rows and the importance scale together. */
+        save();
+        saveFlow();
+        saveCurves();
+        saveGeometry();
+
+        document.getElementById("units").value = state.units;
+        paintUnits();
+        buildLegend();
+        buildCurveLegend();
+        renderCurveTable();
+        buildChart();
+        renderScale();
+        render();
+        refreshAll();
+        renderFlow();
+      }
+
+      function caseNames(store) {
+        return Object.keys(store.cases).sort(function (a, b) {
+          return a.localeCompare(b);
+        });
+      }
+
+      var UNSAVED = "— working draft";
+
+      function renderCases() {
+        var store = readCases();
+        var pick = document.getElementById("case-pick");
+        if (!pick) return;
+        while (pick.firstChild) pick.removeChild(pick.firstChild);
+        pick.appendChild(el("option", { value: "", text: UNSAVED }));
+        caseNames(store).forEach(function (name) {
+          pick.appendChild(el("option", { value: name, text: name }));
+        });
+        pick.value = store.cases[store.current] ? store.current : "";
+
+        var saved = store.cases[pick.value];
+        document.getElementById("case-save").disabled = !pick.value;
+        document.getElementById("case-rename").disabled = !pick.value;
+        document.getElementById("case-delete").disabled = !pick.value;
+        var note = document.getElementById("case-note");
+        var count = caseNames(store).length;
+        note.textContent = saved
+          ? "saved " + new Date(saved.saved).toLocaleString()
+          : count === 0
+            ? "nothing saved yet — Save as… names this layout"
+            : count === 1
+              ? "1 saved case"
+              : count + " saved cases";
+      }
+
+      function askCaseName(suggested) {
+        var store = readCases();
+        var name = window.prompt("Name this case", suggested || "");
+        if (name === null) return null;
+        name = name.trim();
+        if (!name) return null;
+        if (
+          store.cases[name] &&
+          !window.confirm("A case called " + name + " exists. Replace it?")
+        )
+          return null;
+        return name;
+      }
+
+      function wireCases() {
+        var store = readCases();
+        if (store.current && store.cases[store.current]) {
+          applyCase(store.cases[store.current]);
+        }
+        renderCases();
+        renderCompare();
+
+        document
+          .getElementById("compare-refresh")
+          .addEventListener("click", renderCompare);
+
+        document
+          .getElementById("case-pick")
+          .addEventListener("change", function (ev) {
+            var store = readCases();
+            var name = ev.target.value;
+            if (name && store.cases[name]) applyCase(store.cases[name]);
+            store.current = name && store.cases[name] ? name : "";
+            writeCases(store);
+            renderCases();
+            renderCompare();
+          });
+
+        document.getElementById("case-save").addEventListener("click", function () {
+          var store = readCases();
+          if (!store.current || !store.cases[store.current]) return;
+          store.cases[store.current] = snapshotCase();
+          writeCases(store);
+          renderCases();
+          renderCompare();
+        });
+
+        document
+          .getElementById("case-saveas")
+          .addEventListener("click", function () {
+            var name = askCaseName(
+              document.getElementById("case-pick").value || "",
+            );
+            if (!name) return;
+            var store = readCases();
+            store.cases[name] = snapshotCase();
+            store.current = name;
+            writeCases(store);
+            renderCases();
+            renderCompare();
+          });
+
+        document
+          .getElementById("case-rename")
+          .addEventListener("click", function () {
+            var store = readCases();
+            var was = store.current;
+            if (!was || !store.cases[was]) return;
+            var name = askCaseName(was);
+            if (!name || name === was) return;
+            store.cases[name] = store.cases[was];
+            delete store.cases[was];
+            store.current = name;
+            writeCases(store);
+            renderCases();
+            renderCompare();
+          });
+
+        document
+          .getElementById("case-delete")
+          .addEventListener("click", function () {
+            var store = readCases();
+            var name = store.current;
+            if (!name || !store.cases[name]) return;
+            if (
+              !window.confirm(
+                "Delete the case " + name + "? This cannot be undone.",
+              )
+            )
+              return;
+            delete store.cases[name];
+            store.current = "";
+            writeCases(store);
+            renderCases();
+            renderCompare();
+          });
+      }
+
+      /* ------------------------------------------------------------------
+         Contrasting cases. Every score the app shows is computed from state, so a
+         saved case can be scored by standing it up in state for the length of one
+         measurement and putting the live one back afterwards. Nothing is drawn
+         while that happens, which is what makes it safe.
+         ------------------------------------------------------------------ */
+
+      function refFromEnd(end) {
+        var c = centerById(end.cid);
+        var st = c && end.sid ? stationById(c, end.sid) : null;
+        return st ? stationRef(c, st) : null;
+      }
+
+      function measureNow() {
+        var grid = buildGrid();
+        var value = 0;
+        var max = 0;
+        var vital = 0;
+        var vitalMet = 0;
+        var unmeasured = 0;
+
+        state.rows.forEach(function (row) {
+          var imp = importanceOf(row.importance);
+          var constraint = imp.weight === null;
+          if (!constraint) max += imp.weight;
+          var d = distanceFor(row, grid);
+          if (d === null || !isFinite(d)) {
+            unmeasured += 1;
+            return;
+          }
+          var sat = satisfaction(row.proximity, d);
+          if (constraint) {
+            vital += 1;
+            if (sat >= 0.999) vitalMet += 1;
+          } else {
+            value += imp.weight * sat;
+          }
+        });
+
+        var solved = solveEmpty();
+        var metric = state.distMetric;
+        var out = {
+          loadedTrips: 0,
+          emptyTrips: 0,
+          loadedTravel: 0,
+          emptyTravel: 0,
+        };
+
+        function add(key, trips, which) {
+          if (!(trips > 0)) return;
+          var ends = splitFlowKey(key);
+          if (!ends) return;
+          var a = refFromEnd(ends.from);
+          var b = refFromEnd(ends.to);
+          if (!a || !b) return;
+          var d = cellDistance(grid, a, b, metric);
+          out[which + "Trips"] += trips;
+          if (d !== null && isFinite(d)) out[which + "Travel"] += trips * d;
+        }
+        Object.keys(state.flow).forEach(function (key) {
+          add(key, state.flow[key], "loaded");
+        });
+        Object.keys(solved.empty).forEach(function (key) {
+          add(key, solved.empty[key], "empty");
+        });
+
+        return {
+          value: value,
+          max: max,
+          score: max > 0 ? (value / max) * 100 : 0,
+          vital: vital,
+          vitalMet: vitalMet,
+          unmeasured: unmeasured,
+          centers: state.centers.length,
+          stations: state.centers.reduce(function (n, c) {
+            return n + stationsOf(c).length;
+          }, 0),
+          loadedTrips: out.loadedTrips,
+          emptyTrips: out.emptyTrips,
+          loadedTravel: out.loadedTravel,
+          emptyTravel: out.emptyTravel,
+          travel: out.loadedTravel + out.emptyTravel,
+        };
+      }
+
+      function measureCase(snap) {
+        var keep = {
+          building: state.building,
+          units: state.units,
+          kinds: state.kinds,
+          centers: state.centers,
+          rows: state.rows,
+          levels: state.levels,
+          curves: state.curves,
+          flow: state.flow,
+        };
+        try {
+          var geo = normalizeStations(JSON.parse(JSON.stringify(snap.geometry)));
+          state.building = geo.building;
+          state.units = keep.units; /* compare in one unit, the one on screen */
+          state.kinds = geo.kinds;
+          state.centers = geo.centers;
+          state.rows = JSON.parse(JSON.stringify(snap.rows || []));
+          state.levels = JSON.parse(JSON.stringify(snap.levels || keep.levels));
+          state.curves = JSON.parse(JSON.stringify(snap.curves || keep.curves));
+          state.flow = migrateFlowKeys(JSON.parse(JSON.stringify(snap.flow || {})));
+          return measureNow();
+        } finally {
+          state.building = keep.building;
+          state.units = keep.units;
+          state.kinds = keep.kinds;
+          state.centers = keep.centers;
+          state.rows = keep.rows;
+          state.levels = keep.levels;
+          state.curves = keep.curves;
+          state.flow = keep.flow;
+        }
+      }
+
+      function renderCompare() {
+        var table = document.getElementById("compare-grid");
+        var note = document.getElementById("compare-note");
+        if (!table) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+
+        var store = readCases();
+        var names = caseNames(store);
+        var measured = [{ name: "Working draft", m: measureNow(), live: true }];
+        names.forEach(function (name) {
+          measured.push({ name: name, m: measureCase(store.cases[name]) });
+        });
+
+        note.textContent =
+          names.length === 0
+            ? "Save a case above and it joins this table; the working draft is always the first line."
+            : "Scored on the same scale, in " +
+              (state.units === "ft" ? "feet" : "meters") +
+              ". The best figure in each column is marked.";
+
+        var COLUMNS = [
+          {
+            key: "score",
+            label: "Design score",
+            fmt: function (v) {
+              return v.toFixed(1) + "%";
+            },
+            best: "high",
+          },
+          {
+            key: "value",
+            label: "Design value",
+            fmt: function (v) {
+              return (Math.round(v * 10) / 10).toFixed(1);
+            },
+            best: "high",
+          },
+          {
+            key: "max",
+            label: "Maximum",
+            fmt: function (v) {
+              return String(Math.round(v));
+            },
+          },
+          { key: "vitalMet", label: "Vital met", fmt: null },
+          { key: "travel", label: "Total travel", fmt: "length", best: "low" },
+          { key: "loadedTravel", label: "Loaded", fmt: "length", best: "low" },
+          { key: "emptyTravel", label: "Empty", fmt: "length", best: "low" },
+          { key: "emptyShare", label: "Empty share", fmt: null, best: "low" },
+          { key: "centers", label: "Centers", fmt: null },
+          { key: "stations", label: "Stations", fmt: null },
+        ];
+
+        function cellText(col, m) {
+          if (col.key === "vitalMet") return m.vitalMet + " of " + m.vital;
+          if (col.key === "emptyShare")
+            return m.travel > 0
+              ? ((m.emptyTravel / m.travel) * 100).toFixed(1) + "%"
+              : "—";
+          if (col.fmt === "length") return String(Math.round(toUnits(m[col.key])));
+          if (col.fmt) return col.fmt(m[col.key]);
+          return String(m[col.key]);
+        }
+
+        function cellValue(col, m) {
+          if (col.key === "emptyShare")
+            return m.travel > 0 ? m.emptyTravel / m.travel : Infinity;
+          return m[col.key];
+        }
+
+        var thead = el("thead");
+        var head = el("tr");
+        head.appendChild(el("th", { class: "corner", text: "Case" }));
+        COLUMNS.forEach(function (col) {
+          head.appendChild(el("th", { text: col.label }));
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        /* Marking the best figure only means something once there is something to
+           compare it with. */
+        var best = {};
+        if (measured.length > 1) {
+          COLUMNS.forEach(function (col) {
+            if (!col.best) return;
+            var pick = null;
+            measured.forEach(function (row) {
+              var v = cellValue(col, row.m);
+              if (!isFinite(v)) return;
+              if (pick === null) pick = v;
+              else if (col.best === "high") pick = Math.max(pick, v);
+              else pick = Math.min(pick, v);
+            });
+            best[col.key] = pick;
+          });
+        }
+
+        var tbody = el("tbody");
+        measured.forEach(function (row) {
+          var tr = el("tr", { class: row.live ? "live" : "" });
+          tr.appendChild(el("td", { class: "rowhead", text: row.name }));
+          COLUMNS.forEach(function (col) {
+            var v = cellValue(col, row.m);
+            var isBest =
+              best[col.key] !== undefined &&
+              isFinite(v) &&
+              Math.abs(v - best[col.key]) < 1e-9;
+            tr.appendChild(
+              el("td", {
+                class: "total" + (isBest ? " bestcell" : ""),
+                text: cellText(col, row.m),
+              }),
+            );
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+
       function refreshAll() {
         buildLayout();
         renderKinds();
@@ -4865,6 +5530,27 @@
         return "X" + state.centers.length;
       }
 
+      /* How many stations a center is born with. Most cases want one input and one
+         output, which is what the deck uses; a simple case can get by with a
+         single station that does both, and a detailed one adds its own. */
+      var STATION_PRESETS = {
+        "in-out": function () {
+          return [
+            { id: "I", fn: "in", edge: "top", t: 0.5 },
+            { id: "O", fn: "out", edge: "bottom", t: 0.5 },
+          ];
+        },
+        io: function () {
+          return [{ id: "IO", fn: "io", edge: "bottom", t: 0.5 }];
+        },
+      };
+
+      function newStations() {
+        var make =
+          STATION_PRESETS[state.stationPreset] || STATION_PRESETS["in-out"];
+        return make();
+      }
+
       function addCenter(name) {
         var id = name || nextCenterName();
         if (centerById(id)) return null;
@@ -4876,10 +5562,10 @@
           y: at.y,
           w: at.w,
           h: at.h,
-          kind: "process",
-          I: { edge: "top", t: 0.5 },
-          O: { edge: "bottom", t: 0.5 },
+          kind: kindNames()[0],
+          stations: newStations(),
         };
+        bindPrimaryStations(center);
         state.centers.push(center);
         return center;
       }
@@ -5093,7 +5779,7 @@
             "font-size": 11,
             "text-anchor": "middle",
           });
-          xLabel.textContent = String(Math.round(d * 10) / 10);
+          xLabel.textContent = String(Math.round(toUnits(d) * 10) / 10);
           svg.appendChild(xLabel);
         }
 
@@ -5117,7 +5803,7 @@
           "font-weight": 600,
           "text-anchor": "middle",
         });
-        axisTitle.textContent = "Distance (meters)";
+        axisTitle.textContent = "Distance (" + unitLabel() + ")";
         svg.appendChild(axisTitle);
 
         var yTitle = svgEl("text", {
@@ -5245,7 +5931,10 @@
           tip.appendChild(
             el("div", {
               class: "tip-head",
-              text: (Math.round(dist * 10) / 10).toFixed(1) + " m",
+              text:
+                (Math.round(toUnits(dist) * 10) / 10).toFixed(1) +
+                " " +
+                unitLabel(),
             }),
           );
           PROXIMITY.forEach(function (prox) {
@@ -5328,12 +6017,12 @@
               step: String(step),
               min: String(min),
             });
-            input.value = String(c[key]);
+            input.value = inUnits(c[key]);
             input.setAttribute("aria-label", prox.name + ", " + label);
             input.addEventListener("input", function () {
               var value = parseFloat(input.value);
               if (isNaN(value)) return;
-              c[key] = value;
+              c[key] = fromUnits(value);
               buildChart();
               evaluate();
               saveCurves();
@@ -6141,6 +6830,292 @@
         return { rows: rows, cols: cols, rowNames: rowNames, colNames: colNames };
       }
 
+      /* ------------------------------------------------------------------
+         Flows as a list. A matrix has a cell for every pair whether or not
+         anything crosses it, which is fine for twelve centers and unreadable once
+         each carries five stations. The list holds only the flows that run: where
+         it leaves, where it arrives, how many trips. The matrix below depicts it.
+         ------------------------------------------------------------------ */
+
+      /* The one row being added, held apart from the flows themselves so a
+         half-filled line survives a redraw and lands only once it is complete. */
+      var draftFlow = null;
+
+      function flowEntries() {
+        var rowOrder = {};
+        stationOrder("out").forEach(function (r, i) {
+          rowOrder[r.key] = i;
+        });
+        var colOrder = {};
+        stationOrder("in").forEach(function (r, i) {
+          colOrder[r.key] = i;
+        });
+        var list = [];
+        Object.keys(state.flow).forEach(function (key) {
+          var ends = splitFlowKey(key);
+          if (!ends || !ends.from.sid || !ends.to.sid) return;
+          list.push({ key: key, ends: ends, trips: state.flow[key] });
+        });
+        list.sort(function (a, b) {
+          var ak = a.ends.from.cid + "." + a.ends.from.sid;
+          var bk = b.ends.from.cid + "." + b.ends.from.sid;
+          var byRow = (rowOrder[ak] | 0) - (rowOrder[bk] | 0);
+          if (byRow) return byRow;
+          var ac = a.ends.to.cid + "." + a.ends.to.sid;
+          var bc = b.ends.to.cid + "." + b.ends.to.sid;
+          return (colOrder[ac] | 0) - (colOrder[bc] | 0);
+        });
+        return list;
+      }
+
+      function stationsFor(cid, fn) {
+        var c = centerById(cid);
+        if (!c) return [];
+        return stationsOf(c).filter(function (st) {
+          return fn === "out" ? carriesOut(st) : carriesIn(st);
+        });
+      }
+
+      /* An end is picked as a center and then a station of it; changing the center
+         moves the station to that center's first usable one, so the pair is never
+         left naming a station that is not there. */
+      function endPicker(end, fn, onChange) {
+        var wrap = el("span", { class: "flow-end" });
+        var centres = state.centers.map(function (c) {
+          return c.id;
+        });
+        wrap.appendChild(
+          makeSelect(centres, end.cid, "", "", function (v) {
+            var first = stationsFor(v, fn)[0];
+            if (!first) {
+              window.alert(
+                v +
+                  " has no station that can " +
+                  (fn === "out" ? "send." : "receive."),
+              );
+              renderFlowList();
+              return;
+            }
+            onChange({ cid: v, sid: first.id });
+          }),
+        );
+        var choices = stationsFor(end.cid, fn).map(function (st) {
+          return st.id;
+        });
+        wrap.appendChild(
+          makeSelect(choices, end.sid, "", "station", function (v) {
+            onChange({ cid: end.cid, sid: v });
+          }),
+        );
+        return wrap;
+      }
+
+      function flowExists(from, to) {
+        return state.flow[from.cid + "." + from.sid + "|" + to.cid + "." + to.sid] >
+          0
+          ? true
+          : false;
+      }
+
+      function renderFlowList() {
+        var host = document.getElementById("flow-list");
+        if (!host) return;
+        host.hidden = state.flowEntry !== "list";
+        while (host.firstChild) host.removeChild(host.firstChild);
+        if (host.hidden) return;
+
+        var head = el("div", { class: "flow-row head" });
+        ["From", "To", "Trips", ""].forEach(function (label) {
+          head.appendChild(el("span", { text: label }));
+        });
+        host.appendChild(head);
+
+        function rowFor(entry) {
+          var row = el("div", { class: "flow-row" });
+          var from = entry.ends.from;
+          var to = entry.ends.to;
+
+          function move(nextFrom, nextTo) {
+            if (nextFrom.cid === nextTo.cid) {
+              window.alert("A center does not ship a loaded trip to itself.");
+              renderFlowList();
+              return;
+            }
+            if (
+              flowExists(nextFrom, nextTo) &&
+              !(
+                nextFrom.cid === from.cid &&
+                nextFrom.sid === from.sid &&
+                nextTo.cid === to.cid &&
+                nextTo.sid === to.sid
+              )
+            ) {
+              window.alert("That flow is already on the list.");
+              renderFlowList();
+              return;
+            }
+            var trips = state.flow[entry.key];
+            delete state.flow[entry.key];
+            state.flow[
+              nextFrom.cid +
+                "." +
+                nextFrom.sid +
+                "|" +
+                nextTo.cid +
+                "." +
+                nextTo.sid
+            ] = trips;
+            saveFlow();
+            renderFlow();
+          }
+
+          row.appendChild(
+            endPicker(from, "out", function (next) {
+              move(next, to);
+            }),
+          );
+          row.appendChild(
+            endPicker(to, "in", function (next) {
+              move(from, next);
+            }),
+          );
+
+          var trips = el("input", {
+            class: "f num entered",
+            type: "number",
+            min: "0",
+            step: "1",
+          });
+          trips.value = String(entry.trips);
+          trips.setAttribute("aria-label", "trips on this flow");
+          trips.addEventListener("change", function () {
+            var v = parseFloat(trips.value);
+            if (isNaN(v) || v <= 0) delete state.flow[entry.key];
+            else state.flow[entry.key] = v;
+            saveFlow();
+            renderFlow();
+          });
+          row.appendChild(trips);
+
+          var drop = el("button", {
+            class: "del",
+            type: "button",
+            text: "×",
+            title: "Remove this flow",
+          });
+          drop.addEventListener("click", function () {
+            delete state.flow[entry.key];
+            saveFlow();
+            renderFlow();
+          });
+          row.appendChild(drop);
+          return row;
+        }
+
+        var entries = flowEntries();
+        entries.forEach(function (entry) {
+          host.appendChild(rowFor(entry));
+        });
+
+        if (draftFlow) host.appendChild(draftRow());
+
+        var add = el("button", {
+          class: "add-station",
+          type: "button",
+          text: "+ flow",
+          title: "Add a flow",
+        });
+        add.addEventListener("click", function () {
+          var out = stationOrder("out")[0];
+          var into = stationOrder("in").filter(function (r) {
+            return !out || r.cid !== out.cid;
+          })[0];
+          if (!out || !into) {
+            window.alert("Two centers with usable stations are needed first.");
+            return;
+          }
+          draftFlow = {
+            from: { cid: out.cid, sid: out.sid },
+            to: { cid: into.cid, sid: into.sid },
+            trips: "",
+          };
+          renderFlowList();
+        });
+        host.appendChild(add);
+
+        var note = el("span", {
+          class: "kind-count",
+          text:
+            entries.length === 1 ? "1 flow" : entries.length + " flows on the list",
+        });
+        host.appendChild(note);
+      }
+
+      /* The new line commits the moment it names two ends and a positive number
+         of trips; until then it is only a draft, and a redraw keeps it. */
+      function draftRow() {
+        var row = el("div", { class: "flow-row draft" });
+        row.appendChild(
+          endPicker(draftFlow.from, "out", function (next) {
+            draftFlow.from = next;
+            renderFlowList();
+          }),
+        );
+        row.appendChild(
+          endPicker(draftFlow.to, "in", function (next) {
+            draftFlow.to = next;
+            renderFlowList();
+          }),
+        );
+
+        var trips = el("input", {
+          class: "f num",
+          type: "number",
+          min: "0",
+          step: "1",
+          placeholder: "trips",
+        });
+        trips.value = draftFlow.trips;
+        trips.setAttribute("aria-label", "trips on the new flow");
+        trips.addEventListener("change", function () {
+          var v = parseFloat(trips.value);
+          draftFlow.trips = trips.value;
+          if (isNaN(v) || v <= 0) return;
+          if (draftFlow.from.cid === draftFlow.to.cid) {
+            window.alert("A center does not ship a loaded trip to itself.");
+            return;
+          }
+          if (flowExists(draftFlow.from, draftFlow.to)) {
+            window.alert("That flow is already on the list.");
+            return;
+          }
+          setTripsOn(
+            stationRef(centerById(draftFlow.from.cid), {
+              id: draftFlow.from.sid,
+            }),
+            stationRef(centerById(draftFlow.to.cid), { id: draftFlow.to.sid }),
+            v,
+          );
+          draftFlow = null;
+          saveFlow();
+          renderFlow();
+        });
+        row.appendChild(trips);
+
+        var drop = el("button", {
+          class: "del",
+          type: "button",
+          text: "×",
+          title: "Discard this line",
+        });
+        drop.addEventListener("click", function () {
+          draftFlow = null;
+          renderFlowList();
+        });
+        row.appendChild(drop);
+        return row;
+      }
+
       function renderFlow() {
         var table = document.getElementById("flow-grid");
         if (!table) return;
@@ -6203,7 +7178,18 @@
             /* A center never ships a loaded trip to itself, so those cells take
                no input — they carry only the unload-to-reload move. A cell whose
                stations cannot face each other takes none either. */
-            var editable = !internal && carriesOut(from.st) && carriesIn(to.st);
+            var editable =
+              state.flowEntry === "matrix" &&
+              !internal &&
+              carriesOut(from.st) &&
+              carriesIn(to.st);
+            /* In list mode the matrix is the depiction, not the entry, so a figure
+               shows as the green text it was typed as rather than as a field. */
+            if (!editable && trips > 0) {
+              box.appendChild(
+                el("span", { class: "loaded entered-text", text: String(trips) }),
+              );
+            }
             if (editable) {
               var input = el("input", { type: "number", min: "0", step: "1" });
               input.value = trips ? String(trips) : "";
@@ -6359,6 +7345,7 @@
         /* The distances below answer the same set of trips, so they follow the
            flow table rather than keeping their own trigger. Geometry changes
            reach them when the tab is opened. */
+        renderFlowList();
         renderDistance();
         renderTravel();
         renderFlowGraph();
@@ -6898,7 +7885,7 @@
 
       function fmtDistance(d) {
         if (d === null || d === undefined || !isFinite(d)) return "\u2014";
-        return String(Math.round(d));
+        return String(Math.round(toUnits(d)));
       }
 
       /* ------------------------------------------------------------------
@@ -6941,8 +7928,9 @@
             var d = t > 0 || e > 0 ? cellDistance(grid, from, to, metric) : null;
             lTrips[i][j] = t;
             eTrips[i][j] = e;
-            lTravel[i][j] = d === null ? 0 : t * d;
-            eTravel[i][j] = d === null ? 0 : e * d;
+            var du = d === null ? null : toUnits(d);
+            lTravel[i][j] = du === null ? 0 : t * du;
+            eTravel[i][j] = du === null ? 0 : e * du;
           });
         });
 
@@ -7155,6 +8143,35 @@
         renderDistance();
         renderTravel();
       });
+
+      var presetSelect = document.getElementById("station-preset");
+      presetSelect.value = state.stationPreset;
+      presetSelect.addEventListener("change", function (ev) {
+        state.stationPreset = STATION_PRESETS[ev.target.value]
+          ? ev.target.value
+          : "in-out";
+        saveGeometry();
+      });
+
+      var unitSelect = document.getElementById("units");
+      unitSelect.value = state.units;
+      unitSelect.addEventListener("change", function (ev) {
+        state.units = ev.target.value === "ft" ? "ft" : "m";
+        paintUnits();
+        renderCurveTable();
+        buildChart();
+        refreshAll();
+        renderFlow();
+        saveGeometry();
+      });
+
+      document
+        .getElementById("flow-entry")
+        .addEventListener("change", function (ev) {
+          state.flowEntry = ev.target.value;
+          draftFlow = null;
+          renderFlow();
+        });
 
       document
         .getElementById("hide-quiet")
@@ -7369,6 +8386,8 @@
       var geo = normalizeStations(loadGeometry());
       state.building = geo.building;
       state.kinds = geo.kinds;
+      state.units = geo.units;
+      state.stationPreset = geo.stationPreset;
       state.centers = geo.centers;
       state.rows = load();
       state.flow = migrateFlowKeys(loadFlow());
@@ -7380,14 +8399,16 @@
       buildLayout();
       renderRelationshipView();
       renderKinds();
+      paintUnits();
       renderGeoTable();
       renderFlow();
       renderScale();
+      wireCases();
       render();
     </script>
 
     <script>
-      window.__BUILD__ = "20261002224353";
+      window.__BUILD__ = "20261002225813";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
