@@ -2545,6 +2545,99 @@
             <table class="flowtable compare" id="block-scores"></table>
           </div>
         </section>
+
+        <section class="panel skel">
+          <div class="scale-head">
+            <h2>Net layout and aisle set</h2>
+            <div class="geo-tools">
+              <label class="constraint-cell">
+                Lane width
+                <input
+                  id="lane-width"
+                  class="f num"
+                  type="number"
+                  min="1"
+                  max="12"
+                  step="0.5"
+                  value="3"
+                  aria-label="lane width"
+                />
+              </label>
+              <label class="constraint-cell">
+                Lane capacity
+                <input
+                  id="lane-cap"
+                  class="f num"
+                  type="number"
+                  min="1"
+                  step="50"
+                  value="600"
+                  aria-label="trips per lane per period"
+                />
+              </label>
+              <label class="constraint-cell">
+                Two-way below
+                <input
+                  id="lane-bi"
+                  class="f num"
+                  type="number"
+                  min="0"
+                  step="25"
+                  value="150"
+                  aria-label="two-way threshold"
+                />
+              </label>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            The centers come back from their gross size to the size they actually
+            need, and the space that opens is where the aisles go. The aisle set is
+            not guessed at: every loaded and every empty trip is routed through the
+            freed space, and the runs traffic actually uses become the segments. A
+            segment gets as many lanes as its traffic needs &mdash; a single two-way
+            lane while it stays quiet, a lane each way once it does not &mdash; and
+            where two segments cross they make an intersection as wide as the lanes
+            meeting there. Empty trips count throughout, because a vehicle returning
+            for its next load occupies a lane exactly as a loaded one does.
+          </p>
+
+          <div class="bandbar">
+            <button class="primary" id="net-generate" type="button">
+              Grow the net layout
+            </button>
+            <input
+              id="net-count"
+              class="f num"
+              type="number"
+              min="1"
+              max="6"
+              step="1"
+              value="3"
+              aria-label="how many net layouts"
+            />
+            <button id="net-accept" type="button">Accept onto the layout</button>
+            <span class="case-note" id="net-note"></span>
+          </div>
+
+          <div class="skel-alts" id="net-alts"></div>
+
+          <div class="paper geo-paper">
+            <div id="net-canvas"></div>
+          </div>
+
+          <div class="scalewrap">
+            <table class="flowtable compare" id="net-scores"></table>
+          </div>
+
+          <h3 class="skel-h3">Traffic table</h3>
+          <p class="note">
+            What each aisle segment and each intersection carries per period.
+          </p>
+          <div class="scalewrap">
+            <table class="flowtable compare" id="traffic-grid"></table>
+          </div>
+        </section>
       </div>
 
       <footer class="pagefoot">
@@ -2841,6 +2934,12 @@
         blockPick: 0,
         blockCount: 4,
         blockMetric: "Rectilinear",
+        laneWidth: 3,
+        laneCapacity: 600,
+        biThreshold: 150,
+        netAlts: [],
+        netPick: 0,
+        netCount: 3,
         skelAlternatives: 4,
         skelPick: 0,
         skeleton: null,
@@ -9473,6 +9572,682 @@
         table.appendChild(tbody);
       }
 
+      /* ==================================================================
+         Net layout and the aisle set (specification stage 3)
+
+         A block layout holds its centers at gross size, larger than they need to
+         be. Shrinking each one back to its net size opens the building up, and the
+         space that opens is where the aisles go.
+
+         The aisle set is not guessed at: every loaded and every empty trip is
+         routed through the freed space, and the runs that traffic actually uses
+         become the aisle segments. A segment is then given as many lanes as its
+         traffic needs, one way or both, and where two segments cross they make an
+         intersection wide enough for the lanes meeting there. That is what the
+         traffic table counts, segment by segment and intersection by
+         intersection — empty trips included, because a vehicle returning for its
+         next load takes up a lane exactly as a loaded one does.
+         ================================================================== */
+
+      function netCenters(blockCand) {
+        return blockCand.centers.map(function (c) {
+          var source = centerById(c.id);
+          var net = source ? source.w * source.h : c.w * c.h;
+          var gross = c.w * c.h;
+          var k = gross > 0 ? Math.sqrt(net / gross) : 1;
+          var w = c.w * k;
+          var h = c.h * k;
+          return {
+            id: c.id,
+            kind: c.kind,
+            note: c.note || "",
+            /* Shrunk about its own middle, so the space opens evenly around it
+               and the arrangement the skeleton settled is left alone. */
+            x: c.x + (c.w - w) / 2,
+            y: c.y + (c.h - h) / 2,
+            w: w,
+            h: h,
+            stations: (c.stations || []).map(function (st) {
+              return { id: st.id, fn: st.fn, edge: st.edge, t: st.t };
+            }),
+          };
+        });
+      }
+
+      /* Which way a cell's traffic runs: along the longer free run through it. */
+      function runLength(grid, used, x, y, dx, dy) {
+        var n = 0;
+        var cx = x + dx;
+        var cy = y + dy;
+        while (cx >= 0 && cy >= 0 && cx < grid.W && cy < grid.H) {
+          if (!used[cy * grid.W + cx]) break;
+          n++;
+          cx += dx;
+          cy += dy;
+        }
+        return n;
+      }
+
+      function extractAisles(grid, traced) {
+        var measured = aisleLoad(grid, traced);
+        var used = measured.load;
+        if (!measured.peak) return { segments: [], intersections: [], cellOf: {} };
+
+        /* Each used cell belongs to a horizontal or a vertical run, whichever is
+           the longer: a corridor is read along its length, and the short way
+           across it is where it meets another corridor. */
+        var axis = {};
+        Object.keys(used).forEach(function (key) {
+          var k = Number(key);
+          var x = k % grid.W;
+          var y = (k / grid.W) | 0;
+          var h =
+            1 +
+            runLength(grid, used, x, y, 1, 0) +
+            runLength(grid, used, x, y, -1, 0);
+          var v =
+            1 +
+            runLength(grid, used, x, y, 0, 1) +
+            runLength(grid, used, x, y, 0, -1);
+          axis[k] = h >= v ? "h" : "v";
+        });
+
+        /* Cells of the same axis that touch along that axis are one segment. */
+        var segOf = {};
+        var segments = [];
+        Object.keys(axis).forEach(function (key) {
+          var k = Number(key);
+          if (segOf[k] !== undefined) return;
+          var dir = axis[k];
+          var seg = {
+            dir: dir,
+            cells: [],
+            minX: Infinity,
+            maxX: -Infinity,
+            minY: Infinity,
+            maxY: -Infinity,
+          };
+          var index = segments.length;
+          var stack = [k];
+          segOf[k] = index;
+          while (stack.length) {
+            var at = stack.pop();
+            var x = at % grid.W;
+            var y = (at / grid.W) | 0;
+            seg.cells.push(at);
+            if (x < seg.minX) seg.minX = x;
+            if (x > seg.maxX) seg.maxX = x;
+            if (y < seg.minY) seg.minY = y;
+            if (y > seg.maxY) seg.maxY = y;
+            var steps =
+              dir === "h"
+                ? [
+                    [1, 0],
+                    [-1, 0],
+                    [0, 1],
+                    [0, -1],
+                  ]
+                : [
+                    [0, 1],
+                    [0, -1],
+                    [1, 0],
+                    [-1, 0],
+                  ];
+            steps.forEach(function (d, n) {
+              /* Along the run the segment grows freely; across it, only to a
+                 neighbouring lane of the same corridor. */
+              var nx = x + d[0];
+              var ny = y + d[1];
+              if (nx < 0 || ny < 0 || nx >= grid.W || ny >= grid.H) return;
+              var nk = ny * grid.W + nx;
+              if (axis[nk] !== dir || segOf[nk] !== undefined) return;
+              if (n >= 2) {
+                var across =
+                  dir === "h" ? seg.maxY - seg.minY : seg.maxX - seg.minX;
+                if (across >= 3) return;
+              }
+              segOf[nk] = index;
+              stack.push(nk);
+            });
+          }
+          segments.push(seg);
+        });
+
+        return {
+          segments: segments,
+          segOf: segOf,
+          axis: axis,
+          load: used,
+        };
+      }
+
+      /* What each segment and each junction carries, counted from the trips that
+         cross it rather than from the cells, so a vehicle is counted once per
+         corridor however many cells it occupies there. */
+      function aisleTraffic(grid, traced, aisles) {
+        var segments = aisles.segments;
+        segments.forEach(function (seg) {
+          seg.loaded = 0;
+          seg.empty = 0;
+          seg.forward = 0;
+          seg.back = 0;
+        });
+        var junctions = {};
+
+        traced.forEach(function (t) {
+          var cells = routeCells(grid, t.points);
+          var seen = {};
+          var order = [];
+          cells.forEach(function (k) {
+            var index = aisles.segOf[k];
+            if (index === undefined) return;
+            if (seen[index] === undefined) {
+              seen[index] = cells.indexOf(k);
+              order.push(index);
+            }
+          });
+          order.forEach(function (index, n) {
+            var seg = segments[index];
+            if (t.route.kind === "empty") seg.empty += t.route.trips;
+            else seg.loaded += t.route.trips;
+            /* Which way along the corridor, so a lane can be one way. */
+            var first = cells[seen[index]];
+            var fx = first % grid.W;
+            var fy = (first / grid.W) | 0;
+            var mid =
+              seg.dir === "h"
+                ? (seg.minX + seg.maxX) / 2
+                : (seg.minY + seg.maxY) / 2;
+            var here = seg.dir === "h" ? fx : fy;
+            if (here <= mid) seg.forward += t.route.trips;
+            else seg.back += t.route.trips;
+
+            /* Every change of corridor is a junction of the two. */
+            if (n > 0) {
+              var a = Math.min(order[n - 1], index);
+              var b = Math.max(order[n - 1], index);
+              var key = a + ":" + b;
+              if (!junctions[key])
+                junctions[key] = { a: a, b: b, loaded: 0, empty: 0 };
+              if (t.route.kind === "empty") junctions[key].empty += t.route.trips;
+              else junctions[key].loaded += t.route.trips;
+            }
+          });
+        });
+
+        var lane = Math.max(0.5, state.laneWidth);
+        var cap = Math.max(1, state.laneCapacity);
+        segments.forEach(function (seg) {
+          seg.total = seg.loaded + seg.empty;
+          /* A quiet corridor is shaped as a single two-way lane; a busy one gets
+             a lane each way, as many as the flow rate needs. */
+          seg.twoWay = seg.total < state.biThreshold;
+          seg.lanes = seg.twoWay
+            ? 1
+            : Math.max(1, Math.ceil(seg.forward / cap)) +
+              Math.max(1, Math.ceil(seg.back / cap));
+          seg.width = seg.lanes * lane;
+          seg.length =
+            (seg.dir === "h" ? seg.maxX - seg.minX + 1 : seg.maxY - seg.minY + 1) *
+            CELL;
+        });
+
+        var list = Object.keys(junctions).map(function (key) {
+          var j = junctions[key];
+          var a = segments[j.a];
+          var b = segments[j.b];
+          j.total = j.loaded + j.empty;
+          /* "Each side at least one lane wide, spanning the width of its adjacent
+             aisle segments on both axes." */
+          j.w = Math.max(lane, a.dir === "v" ? a.width : b.width);
+          j.h = Math.max(lane, a.dir === "h" ? a.width : b.width);
+          j.x =
+            ((Math.max(a.minX, b.minX) + Math.min(a.maxX, b.maxX)) / 2 + 0.5) *
+            CELL;
+          j.y =
+            ((Math.max(a.minY, b.minY) + Math.min(a.maxY, b.maxY)) / 2 + 0.5) *
+            CELL;
+          return j;
+        });
+        list.sort(function (p, q) {
+          return q.total - p.total;
+        });
+        return list;
+      }
+
+      function netCandidate(blockCand) {
+        var centers = netCenters(blockCand);
+        var keep = state.centers;
+        var keepMetric = state.distMetric;
+        /* The aisle set has to carry every trip the plant makes, not the subset
+           the graph above happens to be displaying. An empty trip occupies a lane
+           exactly as a loaded one does, and leaving it out would size the aisles
+           for half the traffic. The subset band is set aside here for the same
+           reason. */
+        var keepLoaded = state.graphLoaded;
+        var keepEmpty = state.graphEmpty;
+        var keepDetail = state.flowDetail;
+        var keepLow = state.bandLow;
+        var keepHigh = state.bandHigh;
+        state.graphLoaded = true;
+        state.graphEmpty = true;
+        state.flowDetail = "station";
+        state.bandLow = 0;
+        state.bandHigh = 100;
+        try {
+          var copy = { centers: centers };
+          normalizeStations(copy);
+          state.centers = copy.centers;
+          /* A net layout has its aisles, so this is the one stage measured the way
+             the rest of the app measures: along them. */
+          state.distMetric = "Aisle";
+          var grid = buildGrid();
+          var routes = flowRoutes();
+          var traced = [];
+          routes.forEach(function (r) {
+            var path = aislePath(grid, r.from, r.to);
+            if (path) traced.push({ route: r, points: simplify(path) });
+          });
+          var aisles = extractAisles(grid, traced);
+          var junctions = aisleTraffic(grid, traced, aisles);
+          var score = measureNow();
+          return {
+            centers: copy.centers.map(serializeCenter),
+            segments: aisles.segments || [],
+            junctions: junctions,
+            traced: traced.length,
+            routes: routes.length,
+            score: score,
+          };
+        } finally {
+          state.centers = keep;
+          state.distMetric = keepMetric;
+          state.graphLoaded = keepLoaded;
+          state.graphEmpty = keepEmpty;
+          state.flowDetail = keepDetail;
+          state.bandLow = keepLow;
+          state.bandHigh = keepHigh;
+        }
+      }
+
+      function generateNetLayouts(blockCand, count) {
+        var out = [];
+        var widths = [state.laneWidth];
+        for (var i = 1; i < count; i++)
+          widths.push(state.laneWidth * (1 + i * 0.25));
+        var keepWidth = state.laneWidth;
+        try {
+          widths.forEach(function (w) {
+            state.laneWidth = w;
+            var cand = netCandidate(blockCand);
+            cand.lane = w;
+            cand.label = "lane " + Math.round(w * 10) / 10 + " m";
+            out.push(cand);
+          });
+        } finally {
+          state.laneWidth = keepWidth;
+        }
+        return out;
+      }
+
+      function aisleArea(cand) {
+        var total = 0;
+        cand.segments.forEach(function (seg) {
+          total += seg.length * seg.width;
+        });
+        return total;
+      }
+
+      function drawNetLayout(cand, opts) {
+        var small = opts && opts.small;
+        var B = state.building;
+        var pad = Math.max(B.w, B.h) * 0.04;
+        var svg = svgEl("svg", {
+          viewBox:
+            -pad + " " + -pad + " " + (B.w + pad * 2) + " " + (B.h + pad * 2),
+          role: "img",
+          "aria-label": "Net layout with its aisle set",
+        });
+        svg.appendChild(
+          svgEl("rect", {
+            x: -pad,
+            y: -pad,
+            width: B.w + pad * 2,
+            height: B.h + pad * 2,
+            fill: PAPER_BG,
+          }),
+        );
+        svg.appendChild(
+          svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: B.w,
+            height: B.h,
+            fill: "#ffffff",
+            stroke: PAPER_INK,
+            "stroke-width": small ? 1 : 2,
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+
+        /* The aisles go under the blocks, so a segment that has been forced to
+           run through a center is visible rather than hidden. */
+        var peak = cand.segments.reduce(function (m, seg) {
+          return Math.max(m, seg.total);
+        }, 0);
+        cand.segments.forEach(function (seg) {
+          var x = (seg.minX + 0.5) * CELL;
+          var y = (seg.minY + 0.5) * CELL;
+          var along = seg.length;
+          svg.appendChild(
+            svgEl("rect", {
+              class: "aisle-seg",
+              x: seg.dir === "h" ? x - CELL / 2 : x - seg.width / 2,
+              y: seg.dir === "h" ? y - seg.width / 2 : y - CELL / 2,
+              width: seg.dir === "h" ? along : seg.width,
+              height: seg.dir === "h" ? seg.width : along,
+              fill: heatColour(peak > 0 ? seg.total / peak : 0),
+              "fill-opacity": 0.75,
+              stroke: "none",
+            }),
+          );
+        });
+        cand.junctions.forEach(function (j) {
+          svg.appendChild(
+            svgEl("rect", {
+              class: "aisle-cross",
+              x: j.x - j.w / 2,
+              y: j.y - j.h / 2,
+              width: j.w,
+              height: j.h,
+              fill: "none",
+              stroke: PAPER_INK,
+              "stroke-width": small ? 0.6 : 1,
+              "stroke-dasharray": "2 2",
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+        });
+
+        cand.centers.forEach(function (c) {
+          svg.appendChild(
+            svgEl("rect", {
+              x: c.x,
+              y: c.y,
+              width: c.w,
+              height: c.h,
+              fill: kindFill(c.kind),
+              stroke: PAPER_INK,
+              "stroke-width": small ? 1 : 1.5,
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+          if (!small) {
+            var label = svgEl("text", {
+              x: c.x + c.w / 2,
+              y: c.y + c.h / 2 + 0.8,
+              fill: PAPER_INK,
+              "font-size": 2.2,
+              "font-weight": 700,
+              "text-anchor": "middle",
+            });
+            label.textContent = c.id;
+            svg.appendChild(label);
+          }
+        });
+        return svg;
+      }
+
+      function renderNetLayouts() {
+        var strip = document.getElementById("net-alts");
+        var canvas = document.getElementById("net-canvas");
+        var note = document.getElementById("net-note");
+        var table = document.getElementById("net-scores");
+        var traffic = document.getElementById("traffic-grid");
+        if (!strip || !canvas) return;
+        [strip, canvas, table, traffic].forEach(function (host) {
+          while (host.firstChild) host.removeChild(host.firstChild);
+        });
+
+        var alts = state.netAlts || [];
+        if (!alts.length) {
+          note.textContent =
+            "Nothing grown yet — generate a block layout above, then Grow the net layout.";
+          return;
+        }
+
+        alts.forEach(function (cand, i) {
+          var cell = el("div", {
+            class: "skel-alt" + (i === state.netPick ? " current" : ""),
+          });
+          cell.appendChild(drawNetLayout(cand, { small: true }));
+          cell.appendChild(el("span", { text: cand.label }));
+          cell.addEventListener("click", function () {
+            state.netPick = i;
+            renderNetLayouts();
+          });
+          strip.appendChild(cell);
+        });
+
+        var chosen = alts[Math.min(state.netPick, alts.length - 1)];
+        canvas.appendChild(drawNetLayout(chosen, {}));
+        note.textContent =
+          chosen.segments.length +
+          " aisle segments, " +
+          chosen.junctions.length +
+          " intersections, " +
+          chosen.traced +
+          " of " +
+          chosen.routes +
+          " trips routed.";
+
+        var COLUMNS = [
+          {
+            label: "Lane",
+            get: function (c) {
+              return c.lane;
+            },
+            fmt: 1,
+            plain: true,
+          },
+          {
+            label: "Design score",
+            get: function (c) {
+              return c.score.score;
+            },
+            fmt: 1,
+            unit: "%",
+            best: "high",
+          },
+          {
+            label: "Total travel",
+            get: function (c) {
+              return toUnits(c.score.travel);
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Blocked trips",
+            get: function (c) {
+              return c.score.unreachable;
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Segments",
+            get: function (c) {
+              return c.segments.length;
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Intersections",
+            get: function (c) {
+              return c.junctions.length;
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Aisle area",
+            get: function (c) {
+              return aisleArea(c);
+            },
+            fmt: 0,
+            best: "low",
+          },
+        ];
+        paintCompareTable(table, alts, COLUMNS, state.netPick, "Net layout");
+        paintTrafficTable(traffic, chosen);
+      }
+
+      /* Shared by the block and net tables: one row per alternative, the best
+         figure in each column marked. */
+      function paintCompareTable(table, rows, columns, current, corner) {
+        var thead = el("thead");
+        var head = el("tr");
+        head.appendChild(el("th", { class: "corner", text: corner }));
+        columns.forEach(function (col) {
+          head.appendChild(el("th", { text: col.label }));
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var best = {};
+        columns.forEach(function (col, ci) {
+          if (!col.best) {
+            best[ci] = null;
+            return;
+          }
+          var pick = null;
+          rows.forEach(function (row) {
+            var v = col.get(row);
+            if (pick === null) pick = v;
+            else pick = col.best === "high" ? Math.max(pick, v) : Math.min(pick, v);
+          });
+          best[ci] = pick;
+        });
+
+        var tbody = el("tbody");
+        rows.forEach(function (row, i) {
+          var tr = el("tr", { class: i === current ? "live" : "" });
+          tr.appendChild(el("td", { class: "rowhead", text: "#" + (i + 1) }));
+          columns.forEach(function (col, ci) {
+            var v = col.get(row);
+            var isBest = best[ci] !== null && Math.abs(v - best[ci]) < 1e-9;
+            tr.appendChild(
+              el("td", {
+                class: "total" + (isBest ? " bestcell" : ""),
+                text: v.toFixed(col.fmt) + (col.unit || ""),
+              }),
+            );
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+
+      /* The traffic table the course asks for: what each aisle segment and each
+         intersection carries, loaded and empty kept apart. */
+      function paintTrafficTable(table, cand) {
+        var thead = el("thead");
+        var head = el("tr");
+        [
+          "Element",
+          "Runs",
+          "Length",
+          "Lanes",
+          "Width",
+          "Loaded",
+          "Empty",
+          "Total",
+        ].forEach(function (label, i) {
+          head.appendChild(
+            el(i === 0 ? "th" : "th", {
+              class: i === 0 ? "corner" : "",
+              text: label,
+            }),
+          );
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var tbody = el("tbody");
+        var ordered = cand.segments
+          .map(function (seg, i) {
+            return { seg: seg, i: i };
+          })
+          .sort(function (a, b) {
+            return b.seg.total - a.seg.total;
+          });
+
+        ordered.forEach(function (entry) {
+          var seg = entry.seg;
+          if (seg.total <= 0) return;
+          var tr = el("tr");
+          tr.appendChild(
+            el("td", { class: "rowhead", text: "Segment " + (entry.i + 1) }),
+          );
+          tr.appendChild(
+            el("td", {
+              class: "total",
+              text: seg.dir === "h" ? "east–west" : "north–south",
+            }),
+          );
+          tr.appendChild(
+            el("td", { class: "total", text: inUnits(seg.length, 1) }),
+          );
+          tr.appendChild(
+            el("td", {
+              class: "total",
+              text: seg.lanes + (seg.twoWay ? " two-way" : " one-way"),
+            }),
+          );
+          tr.appendChild(el("td", { class: "total", text: inUnits(seg.width, 1) }));
+          tr.appendChild(
+            el("td", { class: "total", text: String(Math.round(seg.loaded)) }),
+          );
+          tr.appendChild(
+            el("td", { class: "total", text: String(Math.round(seg.empty)) }),
+          );
+          tr.appendChild(
+            el("td", { class: "total grand", text: String(Math.round(seg.total)) }),
+          );
+          tbody.appendChild(tr);
+        });
+
+        cand.junctions.forEach(function (j, i) {
+          if (j.total <= 0) return;
+          var tr = el("tr");
+          tr.appendChild(
+            el("td", { class: "rowhead", text: "Intersection " + (i + 1) }),
+          );
+          tr.appendChild(el("td", { class: "total", text: "crossing" }));
+          tr.appendChild(el("td", { class: "total", text: "—" }));
+          tr.appendChild(el("td", { class: "total", text: "—" }));
+          tr.appendChild(
+            el("td", {
+              class: "total",
+              text: inUnits(j.w, 1) + " × " + inUnits(j.h, 1),
+            }),
+          );
+          tr.appendChild(
+            el("td", { class: "total", text: String(Math.round(j.loaded)) }),
+          );
+          tr.appendChild(
+            el("td", { class: "total", text: String(Math.round(j.empty)) }),
+          );
+          tr.appendChild(
+            el("td", { class: "total grand", text: String(Math.round(j.total)) }),
+          );
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+
       function renderFlowGraph() {
         var host = document.getElementById("flow-graph");
         if (!host) return;
@@ -9694,30 +10469,52 @@
 
       /* Traffic per aisle cell: walk each route again at grid resolution and add
          its trips to every cell it passes through. */
-      function drawHeat(svg, grid, traced) {
+      /* The cells a route actually passes over, in order. Shared by the heatmap,
+         which only needs how much crosses each cell, and by the aisle set, which
+         needs to know which route went where. */
+      function routeCells(grid, points) {
+        var out = [];
+        var last = -1;
+        for (var i = 0; i < points.length - 1; i++) {
+          var a = points[i];
+          var b = points[i + 1];
+          var steps = Math.max(
+            1,
+            Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / CELL),
+          );
+          for (var k = 0; k <= steps; k++) {
+            var x = a.x + ((b.x - a.x) * k) / steps;
+            var y = a.y + ((b.y - a.y) * k) / steps;
+            var cx = Math.floor(x / CELL);
+            var cy = Math.floor(y / CELL);
+            if (cx < 0 || cy < 0 || cx >= grid.W || cy >= grid.H) continue;
+            if (grid.blocked[cy * grid.W + cx]) continue;
+            var key = cy * grid.W + cx;
+            if (key !== last) {
+              out.push(key);
+              last = key;
+            }
+          }
+        }
+        return out;
+      }
+
+      function aisleLoad(grid, traced) {
         var load = {};
         var peak = 0;
         traced.forEach(function (t) {
-          for (var i = 0; i < t.points.length - 1; i++) {
-            var a = t.points[i];
-            var b = t.points[i + 1];
-            var steps = Math.max(
-              1,
-              Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / CELL),
-            );
-            for (var k = 0; k <= steps; k++) {
-              var x = a.x + ((b.x - a.x) * k) / steps;
-              var y = a.y + ((b.y - a.y) * k) / steps;
-              var cx = Math.floor(x / CELL);
-              var cy = Math.floor(y / CELL);
-              if (cx < 0 || cy < 0 || cx >= grid.W || cy >= grid.H) continue;
-              if (grid.blocked[cy * grid.W + cx]) continue;
-              var key = cy * grid.W + cx;
-              load[key] = (load[key] || 0) + t.route.trips;
-              if (load[key] > peak) peak = load[key];
-            }
-          }
+          routeCells(grid, t.points).forEach(function (key) {
+            load[key] = (load[key] || 0) + t.route.trips;
+            if (load[key] > peak) peak = load[key];
+          });
         });
+        return { load: load, peak: peak };
+      }
+
+      function drawHeat(svg, grid, traced) {
+        var measured = aisleLoad(grid, traced);
+        var load = measured.load;
+        var peak = measured.peak;
         if (!peak) return;
         var low = Infinity;
         Object.keys(load).forEach(function (key) {
@@ -10405,6 +11202,59 @@
           document.getElementById("tab-btn-layout").click();
         });
 
+      /* ---- net layout ---- */
+
+      function netNumber(id, key, floor, ceiling) {
+        document.getElementById(id).addEventListener("change", function (ev) {
+          var v = parseFloat(ev.target.value);
+          state[key] = isNaN(v)
+            ? state[key]
+            : Math.max(floor, Math.min(ceiling, v));
+          ev.target.value = String(state[key]);
+        });
+      }
+      netNumber("lane-width", "laneWidth", 1, 12);
+      netNumber("lane-cap", "laneCapacity", 1, 100000);
+      netNumber("lane-bi", "biThreshold", 0, 100000);
+      netNumber("net-count", "netCount", 1, 6);
+
+      document
+        .getElementById("net-generate")
+        .addEventListener("click", function () {
+          var alts = state.blockAlts || [];
+          if (!alts.length) {
+            window.alert("Generate a block layout first.");
+            return;
+          }
+          var cand = alts[Math.min(state.blockPick, alts.length - 1)];
+          state.netAlts = generateNetLayouts(cand, state.netCount || 3);
+          state.netPick = 0;
+          renderNetLayouts();
+        });
+
+      document.getElementById("net-accept").addEventListener("click", function () {
+        var alts = state.netAlts || [];
+        if (!alts.length) return;
+        var cand = alts[Math.min(state.netPick, alts.length - 1)];
+        if (
+          !window.confirm(
+            "Put this net layout on the Layout page? The centers come back at their net size, with the aisle set measured around them.",
+          )
+        )
+          return;
+        var geo = normalizeStations({
+          building: state.building,
+          units: state.units,
+          kinds: kindList(),
+          centers: JSON.parse(JSON.stringify(cand.centers)),
+        });
+        state.centers = geo.centers;
+        saveGeometry();
+        refreshAll();
+        renderFlow();
+        document.getElementById("tab-btn-layout").click();
+      });
+
       document
         .getElementById("flow-detail")
         .addEventListener("change", function (ev) {
@@ -10526,6 +11376,7 @@
           if (pair[1] === "tab-skeleton") {
             renderSkeleton();
             renderBlockLayouts();
+            renderNetLayouts();
           }
           window.scrollTo({ top: 0 });
         });
@@ -10700,7 +11551,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261003205509";
+      window.__BUILD__ = "20261003210056";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
