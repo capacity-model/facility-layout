@@ -1051,6 +1051,22 @@
         font-weight: 700;
       }
 
+      .bandbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 10px;
+      }
+
+      .bandbar input.num {
+        width: 68px;
+      }
+
+      .bandlabel {
+        font-size: 13px;
+      }
+
       .casebar {
         display: flex;
         align-items: center;
@@ -2156,7 +2172,45 @@
                 <input id="graph-empty" type="checkbox" />
                 Empty
               </span>
+              <label class="constraint-cell">
+                Flows
+                <select id="flow-detail">
+                  <option value="station">station to station</option>
+                  <option value="center">center to center</option>
+                </select>
+              </label>
             </div>
+          </div>
+
+          <div class="bandbar">
+            <span class="bandlabel">Show the</span>
+            <input
+              id="band-low"
+              class="f num"
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value="0"
+              aria-label="subset lower percentile"
+            />
+            <span class="bandlabel">to</span>
+            <input
+              id="band-high"
+              class="f num"
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value="100"
+              aria-label="subset upper percentile"
+            />
+            <span class="bandlabel">% subset</span>
+            <button id="band-top10" type="button">top 10%</button>
+            <button id="band-top20" type="button">top 20%</button>
+            <button id="band-half" type="button">top half</button>
+            <button id="band-all" type="button">all</button>
+            <span class="case-note" id="band-note"></span>
           </div>
 
           <p class="scale-lede">
@@ -2168,6 +2222,17 @@
             a block &mdash; a vehicle goes round, exactly as it would on the floor.
             Arrow width is proportional to trips per period. The heatmap adds the
             traffic up aisle by aisle instead, which is where congestion shows.
+          </p>
+
+          <p class="scale-lede">
+            The subset band narrows the picture to the links that carry the most,
+            ranked within whatever is turned on: flows by trips, relationships by
+            importance weight. <em>[90&ndash;100]%</em> is the heaviest tenth,
+            <em>[20&ndash;50]%</em> hides the quietest fifth and everything above
+            the median. Links of equal weight rank together and are kept or dropped
+            together, so asking for the most important always returns the whole
+            most-important class. Flows can be read station by station or gathered
+            to the centers they run between.
           </p>
 
           <div class="paper geo-paper" id="flow-graph"></div>
@@ -2528,6 +2593,9 @@
         flow: {},
         showEmpty: true,
         hideQuiet: false,
+        flowDetail: "station",
+        bandLow: 0,
+        bandHigh: 100,
         flowEntry: "matrix",
         units: "m",
         stationPreset: "in-out",
@@ -4152,8 +4220,24 @@
         );
       }
 
-      function drawRelationships(svg) {
+      /* `banded` is passed only by the flow graph, whose own control owns the
+         subset; the relationship view keeps showing the whole set its own legend
+         filters allow. */
+      function drawRelationships(svg, banded) {
         var layer = svgEl("g", { "pointer-events": "none" });
+
+        var inBand = banded
+          ? bandIncluder(
+              state.rows
+                .filter(function (row) {
+                  return (
+                    state.showProx[row.proximity] !== false &&
+                    state.showImp[row.importance] !== false
+                  );
+                })
+                .map(relationshipWeight),
+            )
+          : null;
 
         state.rows.forEach(function (row) {
           /* The two switch groups in the proximity section decide what is drawn.
@@ -4161,6 +4245,7 @@
              appears rather than silently vanishing. */
           if (state.showProx[row.proximity] === false) return;
           if (state.showImp[row.importance] === false) return;
+          if (inBand && !inBand(relationshipWeight(row))) return;
           var prox = proximityOf(row.proximity);
           var imp = importanceOf(row.importance);
           var constraint = imp.weight === null;
@@ -7413,52 +7498,203 @@
         return out;
       }
 
+      /* ------------------------------------------------------------------
+         Link subsets. A design skeleton is drawn from a chosen set of links —
+         the loaded flows station by station, the same flows aggregated to their
+         centers, or the weighted proximity relationships — and usually from only
+         part of that set: the heaviest tenth first, then wider as the picture
+         settles.
+
+         A link's place in the set is its percentile by rank, so [90,100] is the
+         top tenth however the numbers themselves are spread, and [20,50] hides
+         the quietest fifth and everything above the median. Ties share a
+         percentile, so two links of equal weight are never split apart.
+         ------------------------------------------------------------------ */
+
+      function bandIncluder(values) {
+        var low = state.bandLow;
+        var high = state.bandHigh;
+        if (low <= 0 && high >= 100)
+          return function () {
+            return true;
+          };
+        var n = values.length;
+        if (!n)
+          return function () {
+            return true;
+          };
+        var sorted = values.slice().sort(function (a, b) {
+          return a - b;
+        });
+        /* Equal values occupy a block of ranks rather than a single rung, and a
+           set of relationships has only four or five distinct weights, so the
+           blocks are wide. A block is kept when the band reaches any part of it:
+           asking for the most important links has to return the most important
+           links, not nothing because the top class happens to start at the 81st
+           percentile. The readout says how many that leaves. */
+        var span = {};
+        sorted.forEach(function (v, i) {
+          if (span[v] === undefined) span[v] = { from: i, to: i };
+          else span[v].to = i;
+        });
+        return function (v) {
+          var block = span[v];
+          if (!block) return false;
+          var lowPct = (100 * block.from) / n;
+          var highPct = (100 * block.to) / n;
+          return highPct >= low - 1e-9 && lowPct <= high + 1e-9;
+        };
+      }
+
+      /* What a relationship weighs when links are ranked. A Vital relationship
+         carries no weight because it is a constraint rather than a score, but it
+         is the most binding thing on the table, so it ranks above everything that
+         does carry one. */
+      function relationshipWeight(row) {
+        var imp = importanceOf(row.importance);
+        if (imp.weight === null) return Infinity;
+        return imp.weight;
+      }
+
+      function bandLabel() {
+        return state.bandLow <= 0 && state.bandHigh >= 100
+          ? "the whole set"
+          : "[" + state.bandLow + "–" + state.bandHigh + "]%";
+      }
+
       /* Every trip that runs, with the two points it runs between. A loaded trip
          goes output -> input, an empty one input -> output, and both are read off
          the station pair they were keyed by rather than guessed from the centers,
          so a flow sent to a waste dock is drawn arriving at that dock. */
+      /* Every trip that runs, with the two points it runs between. A loaded trip
+         goes output -> input, an empty one input -> output, and both are read off
+         the station pair they were keyed by rather than guessed from the centers,
+         so a flow sent to a waste dock is drawn arriving at that dock.
+
+         At center detail the same trips are gathered per ordered pair of centers
+         and drawn once between their primary stations, which is the aggregated
+         inter-center set. On a layout where each center has one input and one
+         output the two sets are the same picture. */
       function flowRoutes() {
         var solved = solveEmpty();
         var routes = [];
 
-        function push(kind, key, trips) {
-          if (!(trips > 0)) return;
+        function endsOf(key) {
           var ends = splitFlowKey(key);
-          if (!ends || !ends.from.sid || !ends.to.sid) return;
-          if (ends.from.cid === ends.to.cid) return;
+          if (!ends || !ends.from.sid || !ends.to.sid) return null;
+          if (ends.from.cid === ends.to.cid) return null;
           var a = centerById(ends.from.cid);
           var b = centerById(ends.to.cid);
-          if (!a || !b) return;
+          if (!a || !b) return null;
           var sa = stationById(a, ends.from.sid);
           var sb = stationById(b, ends.to.sid);
-          if (!sa || !sb) return;
-          routes.push({
-            kind: kind,
-            trips: trips,
-            fromId: a.id,
-            toId: b.id,
-            from: stationAt(a, sa),
-            to: stationAt(b, sb),
+          return sa && sb ? { a: a, b: b, sa: sa, sb: sb } : null;
+        }
+
+        function collect(kind, source) {
+          var gathered = {};
+          Object.keys(source).forEach(function (key) {
+            var trips = source[key];
+            if (!(trips > 0)) return;
+            var e = endsOf(key);
+            if (!e) return;
+            var sa = e.sa;
+            var sb = e.sb;
+            if (state.flowDetail === "center") {
+              /* One link per ordered pair, drawn on the pair of stations the
+                 centers themselves lead with. */
+              sa =
+                kind === "loaded" ? e.a.O || firstOut(e.a) : e.a.I || firstIn(e.a);
+              sb =
+                kind === "loaded" ? e.b.I || firstIn(e.b) : e.b.O || firstOut(e.b);
+              if (!sa || !sb) return;
+            }
+            var id = e.a.id + "." + sa.id + "|" + e.b.id + "." + sb.id;
+            if (!gathered[id]) {
+              gathered[id] = {
+                kind: kind,
+                trips: 0,
+                fromId: e.a.id,
+                toId: e.b.id,
+                from: stationAt(e.a, sa),
+                to: stationAt(e.b, sb),
+              };
+            }
+            gathered[id].trips += trips;
+          });
+          Object.keys(gathered).forEach(function (id) {
+            routes.push(gathered[id]);
           });
         }
 
-        if (state.graphLoaded) {
-          Object.keys(state.flow).forEach(function (key) {
-            push("loaded", key, state.flow[key]);
-          });
-        }
-        if (state.graphEmpty) {
-          Object.keys(solved.empty).forEach(function (key) {
-            push("empty", key, solved.empty[key]);
-          });
-        }
-        return routes;
+        if (state.graphLoaded) collect("loaded", state.flow);
+        if (state.graphEmpty) collect("empty", solved.empty);
+
+        /* The subset is taken over the links as they are drawn, so narrowing the
+           band on the aggregated set keeps the heaviest center pairs rather than
+           the heaviest station pairs. */
+        var inBand = bandIncluder(
+          routes.map(function (r) {
+            return r.trips;
+          }),
+        );
+        return routes.filter(function (r) {
+          return inBand(r.trips);
+        });
       }
 
       /* The deck's own two blues: the navy it draws its flow arrows in, and the
          lighter blue it outlines their heads with. It never colours empty trips
          separately, because it never draws them. */
       var FLOW_INK = { loaded: "#244060", empty: "#497dba" };
+
+      /* What the band is actually keeping, counted on the links as drawn. Saying
+         "7 of 28" is the whole point of the control: the percentages mean nothing
+         until you can see how many links they leave. */
+      function paintBandNote(traced) {
+        var note = document.getElementById("band-note");
+        if (!note) return;
+
+        var parts = [];
+        if (state.graphLoaded || state.graphEmpty) {
+          var all = 0;
+          var solved = solveEmpty();
+          function tally(source) {
+            var seen = {};
+            Object.keys(source).forEach(function (key) {
+              if (!(source[key] > 0)) return;
+              var ends = splitFlowKey(key);
+              if (!ends || !ends.from.sid || !ends.to.sid) return;
+              if (ends.from.cid === ends.to.cid) return;
+              seen[
+                state.flowDetail === "center"
+                  ? ends.from.cid + "|" + ends.to.cid
+                  : key
+              ] = true;
+            });
+            all += Object.keys(seen).length;
+          }
+          if (state.graphLoaded) tally(state.flow);
+          if (state.graphEmpty) tally(solved.empty);
+          parts.push(traced.length + " of " + all + " flows");
+        }
+        if (state.graphProx) {
+          var allowed = state.rows.filter(function (row) {
+            return (
+              state.showProx[row.proximity] !== false &&
+              state.showImp[row.importance] !== false
+            );
+          });
+          var inBand = bandIncluder(allowed.map(relationshipWeight));
+          var kept = allowed.filter(function (row) {
+            return inBand(relationshipWeight(row));
+          }).length;
+          parts.push(kept + " of " + allowed.length + " relationships");
+        }
+        note.textContent = parts.length
+          ? "Showing " + bandLabel() + ": " + parts.join(", ") + "."
+          : "No layer is turned on.";
+      }
 
       function renderFlowGraph() {
         var host = document.getElementById("flow-graph");
@@ -7566,7 +7802,8 @@
 
         /* The desired proximities from page one, in the course's own colours.
            They go under the traffic, which is what runs over them. */
-        if (state.graphProx) drawRelationships(svg);
+        if (state.graphProx) drawRelationships(svg, true);
+        paintBandNote(traced);
 
         if (state.graphView === "arrows") {
           traced.forEach(function (t) {
@@ -8166,6 +8403,53 @@
       });
 
       document
+        .getElementById("flow-detail")
+        .addEventListener("change", function (ev) {
+          state.flowDetail = ev.target.value === "center" ? "center" : "station";
+          renderFlowGraph();
+        });
+
+      function readBand() {
+        var lo = parseFloat(document.getElementById("band-low").value);
+        var hi = parseFloat(document.getElementById("band-high").value);
+        if (isNaN(lo)) lo = 0;
+        if (isNaN(hi)) hi = 100;
+        lo = Math.max(0, Math.min(100, lo));
+        hi = Math.max(0, Math.min(100, hi));
+        /* A band typed the wrong way round is read the way round it was meant. */
+        state.bandLow = Math.min(lo, hi);
+        state.bandHigh = Math.max(lo, hi);
+        paintBand();
+      }
+
+      function paintBand() {
+        document.getElementById("band-low").value = String(state.bandLow);
+        document.getElementById("band-high").value = String(state.bandHigh);
+        renderFlowGraph();
+      }
+
+      function setBand(lo, hi) {
+        state.bandLow = lo;
+        state.bandHigh = hi;
+        paintBand();
+      }
+
+      document.getElementById("band-low").addEventListener("change", readBand);
+      document.getElementById("band-high").addEventListener("change", readBand);
+      document.getElementById("band-top10").addEventListener("click", function () {
+        setBand(90, 100);
+      });
+      document.getElementById("band-top20").addEventListener("click", function () {
+        setBand(80, 100);
+      });
+      document.getElementById("band-half").addEventListener("click", function () {
+        setBand(50, 100);
+      });
+      document.getElementById("band-all").addEventListener("click", function () {
+        setBand(0, 100);
+      });
+
+      document
         .getElementById("flow-entry")
         .addEventListener("change", function (ev) {
           state.flowEntry = ev.target.value;
@@ -8408,7 +8692,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261002225813";
+      window.__BUILD__ = "20261003202529";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
