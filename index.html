@@ -2456,6 +2456,95 @@
           <p class="note" id="skel-history-note"></p>
           <div class="skel-history" id="skel-history"></div>
         </section>
+
+        <section class="panel skel">
+          <div class="scale-head">
+            <h2>Block layout from the skeleton</h2>
+            <div class="geo-tools">
+              <label class="constraint-cell">
+                Gross area
+                <select id="block-gross">
+                  <option value="percent">net plus a margin</option>
+                  <option value="fill">filling the building</option>
+                </select>
+              </label>
+              <label class="constraint-cell">
+                Measure travel
+                <select id="block-metric">
+                  <option value="Rectilinear">rectilinear</option>
+                  <option value="Euclidean">straight line</option>
+                  <option value="Aisle">around the blocks</option>
+                </select>
+              </label>
+              <label class="constraint-cell">
+                Margin
+                <input
+                  id="block-pct"
+                  class="f num"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="5"
+                  value="30"
+                  aria-label="gross area margin percent"
+                />
+                %
+              </label>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            The skeleton says where things stand relative to one another; a block
+            layout gives them their real size inside the real building. Each node
+            swells into a rectangle of the area its center needs, in the shape it
+            already has, at <em>gross</em> size &mdash; larger than the net figure,
+            to leave the room the aisles will take. Rectangles that end up on top of
+            one another are pushed apart along whichever axis they overlap least,
+            which is the move that disturbs the skeleton&rsquo;s arrangement least.
+            Accepting a layout puts it on the Layout page, where it is scored and
+            edited like any other.
+          </p>
+
+          <p class="scale-lede">
+            These scores are taken without aisles, because at this stage there are
+            none: the space the gross blocks hold is what the aisles will be cut
+            from at the next stage. Every alternative is measured the same way
+            &mdash; rectilinear by default &mdash; which is what makes them
+            comparable with each other. Choosing <em>around the blocks</em> shows
+            what the layout would cost if no aisle were ever cut, and
+            <em>Blocked trips</em> counts the traffic that would then have nowhere
+            to go. Empty trips are re-solved for every alternative, because moving
+            the centers changes which return legs are cheapest.
+          </p>
+
+          <div class="bandbar">
+            <button class="primary" id="block-generate" type="button">
+              Generate block layouts
+            </button>
+            <input
+              id="block-count"
+              class="f num"
+              type="number"
+              min="1"
+              max="8"
+              step="1"
+              value="4"
+              aria-label="how many block layouts"
+            />
+            <button id="block-accept" type="button">Accept onto the layout</button>
+            <span class="case-note" id="block-note"></span>
+          </div>
+
+          <div class="skel-alts" id="block-alts"></div>
+
+          <div class="paper geo-paper">
+            <div id="block-canvas"></div>
+          </div>
+
+          <div class="scalewrap">
+            <table class="flowtable compare" id="block-scores"></table>
+          </div>
+        </section>
       </div>
 
       <footer class="pagefoot">
@@ -2746,6 +2835,12 @@
         skelNodeSize: "area",
         skelInflate: 25,
         skelStations: true,
+        blockGrossMode: "percent",
+        blockGrossPct: 30,
+        blockAlts: [],
+        blockPick: 0,
+        blockCount: 4,
+        blockMetric: "Rectilinear",
         skelAlternatives: 4,
         skelPick: 0,
         skeleton: null,
@@ -4330,6 +4425,17 @@
 
       /* Returns the measured distance, or null when it cannot be measured —
          a missing station, or a center walled off from the other. */
+      /* While a candidate layout is measured off screen, every distance is taken
+         the same way, whatever each relationship normally asks for: stage two has
+         no aisles to route along, and letting some rows route while others do not
+         would make the alternatives incomparable. It is null during ordinary use,
+         where each relationship keeps its own metric. */
+      var metricOverride = null;
+
+      function rowMetric(row) {
+        return metricOverride || row.metric;
+      }
+
       function distanceFor(row, grid) {
         if (row.c1 === "OUT" || row.c2 === "OUT") {
           var inner = centerById(row.c1 === "OUT" ? row.c2 : row.c1);
@@ -4351,14 +4457,14 @@
         if (!a || !b) return null;
 
         if (row.between === "Centroid") {
-          return metricBetween(centroidOf(a), centroidOf(b), row.metric, grid);
+          return metricBetween(centroidOf(a), centroidOf(b), rowMetric(row), grid);
         }
 
         if (row.between === "Boundaries") {
           var gapX = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0);
           var gapY = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0);
-          if (row.metric === "Rectilinear") return gapX + gapY;
-          if (row.metric === "Euclidean") return Math.hypot(gapX, gapY);
+          if (rowMetric(row) === "Rectilinear") return gapX + gapY;
+          if (rowMetric(row) === "Euclidean") return Math.hypot(gapX, gapY);
           var link = boundaryLink(a, b);
           if (link.bar) return 0;
           return aisleDistance(grid, link.p, link.q);
@@ -4370,7 +4476,7 @@
         return metricBetween(
           { x: so.x + so.nx * CELL, y: so.y + so.ny * CELL },
           { x: si.x + si.nx * CELL, y: si.y + si.ny * CELL },
-          row.metric,
+          rowMetric(row),
           grid,
         );
       }
@@ -5565,6 +5671,12 @@
           emptyTravel: 0,
         };
 
+        /* A pair with no route between them contributes no distance, which would
+           quietly flatter a layout that has walled its own traffic in: the worse
+           it is blocked, the less travel it appears to generate. Those trips are
+           counted separately and reported, so a layout can never look good by
+           being impassable. */
+        var unreachable = 0;
         function add(key, trips, which) {
           if (!(trips > 0)) return;
           var ends = splitFlowKey(key);
@@ -5575,6 +5687,7 @@
           var d = cellDistance(grid, a, b, metric);
           out[which + "Trips"] += trips;
           if (d !== null && isFinite(d)) out[which + "Travel"] += trips * d;
+          else unreachable += trips;
         }
         Object.keys(state.flow).forEach(function (key) {
           add(key, state.flow[key], "loaded");
@@ -5599,6 +5712,7 @@
           loadedTravel: out.loadedTravel,
           emptyTravel: out.emptyTravel,
           travel: out.loadedTravel + out.emptyTravel,
+          unreachable: unreachable,
         };
       }
 
@@ -5685,6 +5799,7 @@
           { key: "loadedTravel", label: "Loaded", fmt: "length", best: "low" },
           { key: "emptyTravel", label: "Empty", fmt: "length", best: "low" },
           { key: "emptyShare", label: "Empty share", fmt: null, best: "low" },
+          { key: "unreachable", label: "Blocked trips", fmt: null, best: "low" },
           { key: "centers", label: "Centers", fmt: null },
           { key: "stations", label: "Stations", fmt: null },
         ];
@@ -8836,6 +8951,528 @@
         };
       }
 
+      /* ==================================================================
+         Block layout from a design skeleton (specification stage 2)
+
+         A skeleton says where things stand relative to one another; a block layout
+         gives them their real size and shape inside the real building. The
+         skeleton's arrangement is kept and its nodes are swollen into rectangles
+         of the area each center actually needs — gross area, inflated above the
+         net figure to leave the room the aisles will later take.
+
+         Rectangles that end up on top of each other are pushed apart along
+         whichever axis they overlap least, which is the move that disturbs the
+         skeleton's arrangement least, and each one is pulled back toward where the
+         skeleton put it. If the areas simply do not fit, the inflation is reduced
+         and the attempt made again, and the result says what it managed.
+         ================================================================== */
+
+      function grossScale(netTotal, buildingArea, mode, pct) {
+        if (mode === "fill") {
+          /* (1) so that the sum of the targeted areas corresponds to the targeted
+             building area. */
+          return netTotal > 0 ? buildingArea / netTotal : 1;
+        }
+        /* (2) by a user-specified % for the aisle space still to come. */
+        return 1 + Math.max(0, pct) / 100;
+      }
+
+      /* Areas that simply will not fit are not forced: the attempt is repeated at
+         a smaller gross size until it does, and the layout reports the size it
+         actually achieved rather than the one that was asked for. */
+      function blockCandidate(alt, inflate) {
+        var attempt = null;
+        var factor = 1;
+        for (var tries = 0; tries < 14; tries++) {
+          /* Never below one: a center cannot be given less area than it needs, so
+             the margin for the aisles is what gives way, and only down to none. */
+          var tryScale = Math.max(1, inflate * factor);
+          attempt = blockAttempt(alt, tryScale);
+          if (attempt.overlap < 0.05 || tryScale <= 1) break;
+          factor *= 0.94;
+        }
+        return attempt;
+      }
+
+      function blockAttempt(alt, inflate) {
+        var B = state.building;
+        var sb = alt.bounds;
+        /* The skeleton is drawn in a room larger than the building; its
+           arrangement is read back onto the building itself. */
+        var sx = B.w / sb.w;
+        var sy = B.h / sb.h;
+
+        var netTotal = 0;
+        state.centers.forEach(function (c) {
+          netTotal += c.w * c.h;
+        });
+        var scale = grossScale(
+          netTotal,
+          B.w * B.h,
+          state.blockGrossMode,
+          state.blockGrossPct,
+        );
+        scale = Math.min(scale, inflate);
+
+        var want = {};
+        alt.placed.forEach(function (p) {
+          want[p.id] = { x: p.x * sx, y: p.y * sy };
+        });
+
+        var blocks = [];
+        state.centers.forEach(function (c) {
+          var target = want[c.id];
+          if (!target) return;
+          /* Gross area, in the shape the center already has: the specification
+             asks for the target shape to be respected as best as possible. */
+          var area = c.w * c.h * scale;
+          var ratio = c.h > 0 ? c.w / c.h : 1;
+          var w = Math.sqrt(area * ratio);
+          var h = area / w;
+          w = Math.min(w, B.w);
+          h = Math.min(h, B.h);
+          blocks.push({
+            id: c.id,
+            kind: c.kind,
+            note: c.note,
+            w: w,
+            h: h,
+            baseRatio: ratio,
+            pressX: 0,
+            pressY: 0,
+            cx: target.x,
+            cy: target.y,
+            wantX: target.x,
+            wantY: target.y,
+          });
+        });
+
+        for (var pass = 0; pass < 400; pass++) {
+          var worst = 0;
+          for (var i = 0; i < blocks.length; i++) {
+            for (var j = i + 1; j < blocks.length; j++) {
+              var a = blocks[i];
+              var b = blocks[j];
+              var ox = (a.w + b.w) / 2 - Math.abs(b.cx - a.cx);
+              var oy = (a.h + b.h) / 2 - Math.abs(b.cy - a.cy);
+              if (ox <= 0 || oy <= 0) continue;
+              if (Math.min(ox, oy) > worst) worst = Math.min(ox, oy);
+              /* Separate along the shallower overlap: the smaller move, and the
+                 one that keeps the skeleton's reading of which is left of which. */
+              if (ox < oy) {
+                var dirX = b.cx >= a.cx ? 1 : -1;
+                a.cx -= dirX * ox * 0.5;
+                b.cx += dirX * ox * 0.5;
+                a.pressX = (a.pressX || 0) + ox;
+                b.pressX = (b.pressX || 0) + ox;
+              } else {
+                var dirY = b.cy >= a.cy ? 1 : -1;
+                a.cy -= dirY * oy * 0.5;
+                b.cy += dirY * oy * 0.5;
+                a.pressY = (a.pressY || 0) + oy;
+                b.pressY = (b.pressY || 0) + oy;
+              }
+            }
+          }
+          /* The specification allows a center's length-to-width ratio to move
+             between a minimum and a maximum, and reshaping is far cheaper than
+             moving everything else: a block that keeps colliding sideways becomes
+             narrower and taller, and one colliding vertically does the reverse.
+             Its area never changes. */
+          if (pass > 40 && pass % 20 === 0) {
+            blocks.forEach(function (blk) {
+              if (!blk.pressX && !blk.pressY) return;
+              var area = blk.w * blk.h;
+              var ratio = blk.w / blk.h;
+              var lean = blk.pressX > blk.pressY ? 0.94 : 1.06;
+              var next = Math.max(
+                blk.baseRatio * 0.4,
+                Math.min(blk.baseRatio * 2.5, ratio * lean),
+              );
+              var w = Math.sqrt(area * next);
+              var h = area / w;
+              if (w <= B.w && h <= B.h) {
+                blk.w = w;
+                blk.h = h;
+              }
+              blk.pressX = 0;
+              blk.pressY = 0;
+            });
+          }
+
+          blocks.forEach(function (blk) {
+            /* A gentle pull home, so separation does not drift the arrangement
+               away from what the skeleton said. It eases off over the run: the
+               arrangement matters most early, and fitting matters most at the
+               end, where a rectangle still sitting on its neighbour is a failure
+               rather than a compromise. */
+            var home = 0.02 * Math.max(0, 1 - pass / 300);
+            blk.cx += (blk.wantX - blk.cx) * home;
+            blk.cy += (blk.wantY - blk.cy) * home;
+            blk.cx = Math.max(blk.w / 2, Math.min(B.w - blk.w / 2, blk.cx));
+            blk.cy = Math.max(blk.h / 2, Math.min(B.h - blk.h / 2, blk.cy));
+          });
+          if (worst < 1e-3) break;
+        }
+
+        var overlap = 0;
+        for (var m = 0; m < blocks.length; m++) {
+          for (var n = m + 1; n < blocks.length; n++) {
+            var p = blocks[m];
+            var q = blocks[n];
+            var gx = (p.w + q.w) / 2 - Math.abs(q.cx - p.cx);
+            var gy = (p.h + q.h) / 2 - Math.abs(q.cy - p.cy);
+            if (gx > 0 && gy > 0) overlap += Math.min(gx, gy);
+          }
+        }
+
+        var drift = 0;
+        blocks.forEach(function (blk) {
+          drift += Math.hypot(blk.cx - blk.wantX, blk.cy - blk.wantY);
+        });
+
+        return {
+          scale: scale,
+          overlap: overlap,
+          drift: blocks.length ? drift / blocks.length : 0,
+          centers: blocks.map(function (blk) {
+            return {
+              id: blk.id,
+              kind: blk.kind,
+              note: blk.note || "",
+              x: blk.cx - blk.w / 2,
+              y: blk.cy - blk.h / 2,
+              w: blk.w,
+              h: blk.h,
+            };
+          }),
+        };
+      }
+
+      /* The I/O stations go on the wall facing the centers that station actually
+         trades with, which is the constraint the specification names: where a
+         station may sit within its center. */
+      function placeBlockStations(cand, alt) {
+        var at = {};
+        cand.centers.forEach(function (c) {
+          at[c.id] = { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+        });
+
+        var aim = {};
+        alt.links.forEach(function (link) {
+          if (link.kind !== "flow") return;
+          var aId = alt.placed[link.a] && alt.placed[link.a].id;
+          var bId = alt.placed[link.b] && alt.placed[link.b].id;
+          if (!aId || !bId || !at[aId] || !at[bId]) return;
+          function note(ownId, sid, otherId) {
+            var key = ownId + "." + (sid || "");
+            if (!sid) return;
+            if (!aim[key]) aim[key] = { x: 0, y: 0 };
+            aim[key].x += at[otherId].x - at[ownId].x;
+            aim[key].y += at[otherId].y - at[ownId].y;
+          }
+          note(aId, link.aSid, bId);
+          note(bId, link.bSid, aId);
+        });
+
+        cand.centers.forEach(function (c) {
+          var source = centerById(c.id);
+          c.stations = stationsOf(source).map(function (st) {
+            var want = aim[c.id + "." + st.id];
+            var edge = st.edge;
+            var t = st.t;
+            if (want && (want.x || want.y)) {
+              /* Face the way the flows go: the wall whose outward normal is
+                 closest to the direction of the traffic through this station. */
+              if (Math.abs(want.x) > Math.abs(want.y)) {
+                edge = want.x > 0 ? "right" : "left";
+                t = clamp01((at[c.id].y + want.y * 0.25 - c.y) / c.h);
+              } else {
+                edge = want.y > 0 ? "bottom" : "top";
+                t = clamp01((at[c.id].x + want.x * 0.25 - c.x) / c.w);
+              }
+            }
+            return { id: st.id, fn: st.fn, edge: edge, t: t };
+          });
+        });
+        return cand;
+      }
+
+      function clamp01(v) {
+        if (!isFinite(v)) return 0.5;
+        return Math.max(0.04, Math.min(0.96, v));
+      }
+
+      /* Scored on exactly the terms the rest of the app uses, by standing the
+         candidate up in state for the length of one measurement. */
+      /* A block layout has no aisles yet — the specification grows those at the
+         next stage, out of the space freed when the gross blocks shrink back to
+         their net size. Routing traffic around solid blocks here would measure a
+         building that has not been designed yet, and would report most of the
+         plant as unreachable. The flow travel network is over-imposed at this
+         stage, so the distance between two stations is the run between them;
+         around the blocks stays on the menu, for seeing what a layout costs with
+         no aisles cut at all. */
+      function measureCandidate(cand) {
+        var keep = state.centers;
+        var keepMetric = state.distMetric;
+        try {
+          var copy = {
+            centers: cand.centers.map(function (c) {
+              return c;
+            }),
+          };
+          normalizeStations(copy);
+          state.centers = copy.centers;
+          state.distMetric = state.blockMetric;
+          metricOverride = state.blockMetric;
+          return measureNow();
+        } finally {
+          state.centers = keep;
+          state.distMetric = keepMetric;
+          metricOverride = null;
+        }
+      }
+
+      function generateBlockLayouts(alt, count) {
+        var out = [];
+        /* Alternatives differ by how much room the aisles are left: a tighter
+           layout scores better on travel and leaves less space to route it. */
+        for (var i = 0; i < count; i++) {
+          var inflate = 1 + (0.45 * i) / Math.max(1, count - 1);
+          var cand = blockCandidate(alt, inflate);
+          if (!cand.centers.length) continue;
+          placeBlockStations(cand, alt);
+          cand.score = measureCandidate(cand);
+          cand.label = Math.round((cand.scale - 1) * 100) + "% gross";
+          out.push(cand);
+        }
+        out.sort(function (a, b) {
+          if (Math.abs(a.overlap - b.overlap) > 0.01) return a.overlap - b.overlap;
+          return b.score.score - a.score.score;
+        });
+        return out;
+      }
+
+      function drawBlockLayout(cand, opts) {
+        var small = opts && opts.small;
+        var B = state.building;
+        var pad = Math.max(B.w, B.h) * 0.04;
+        var svg = svgEl("svg", {
+          viewBox:
+            -pad + " " + -pad + " " + (B.w + pad * 2) + " " + (B.h + pad * 2),
+          role: "img",
+          "aria-label": "Block layout generated from the design skeleton",
+        });
+        svg.appendChild(
+          svgEl("rect", {
+            x: -pad,
+            y: -pad,
+            width: B.w + pad * 2,
+            height: B.h + pad * 2,
+            fill: PAPER_BG,
+          }),
+        );
+        svg.appendChild(
+          svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: B.w,
+            height: B.h,
+            fill: "#ffffff",
+            stroke: PAPER_INK,
+            "stroke-width": small ? 1 : 2,
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+
+        cand.centers.forEach(function (c) {
+          svg.appendChild(
+            svgEl("rect", {
+              x: c.x,
+              y: c.y,
+              width: c.w,
+              height: c.h,
+              fill: kindFill(c.kind),
+              stroke: PAPER_INK,
+              "stroke-width": small ? 1 : 1.5,
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+          if (!small) {
+            var label = svgEl("text", {
+              x: c.x + c.w / 2,
+              y: c.y + c.h / 2 + 0.8,
+              fill: PAPER_INK,
+              "font-size": 2.2,
+              "font-weight": 700,
+              "text-anchor": "middle",
+            });
+            label.textContent = c.id;
+            svg.appendChild(label);
+            (c.stations || []).forEach(function (st) {
+              var at = stationAt(c, st);
+              var mark = stationMark(at, st);
+              mark.appendChild(svgEl("title", {}));
+              mark.firstChild.textContent = c.id + " " + st.id;
+              svg.appendChild(mark);
+            });
+          }
+        });
+        return svg;
+      }
+
+      function renderBlockLayouts() {
+        var strip = document.getElementById("block-alts");
+        var canvas = document.getElementById("block-canvas");
+        var note = document.getElementById("block-note");
+        var table = document.getElementById("block-scores");
+        if (!strip || !canvas) return;
+        while (strip.firstChild) strip.removeChild(strip.firstChild);
+        while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
+        while (table.firstChild) table.removeChild(table.firstChild);
+
+        var alts = state.blockAlts || [];
+        if (!alts.length) {
+          note.textContent =
+            "Nothing generated yet — draw or pick a skeleton above, then Generate block layouts.";
+          return;
+        }
+
+        alts.forEach(function (cand, i) {
+          var cell = el("div", {
+            class: "skel-alt" + (i === state.blockPick ? " current" : ""),
+          });
+          cell.appendChild(drawBlockLayout(cand, { small: true }));
+          cell.appendChild(el("span", { text: cand.label }));
+          cell.addEventListener("click", function () {
+            state.blockPick = i;
+            renderBlockLayouts();
+          });
+          strip.appendChild(cell);
+        });
+
+        var chosen = alts[Math.min(state.blockPick, alts.length - 1)];
+        canvas.appendChild(drawBlockLayout(chosen, {}));
+        note.textContent =
+          chosen.overlap > 0.01
+            ? "This one cannot fit without overlap: " +
+              chosen.overlap.toFixed(1) +
+              " m of it. Lower the margin, or give the centers less area."
+            : "Fits with no overlap. Accept puts it on the Layout page.";
+
+        var COLUMNS = [
+          {
+            label: "Gross",
+            get: function (c) {
+              return (c.scale - 1) * 100;
+            },
+            fmt: 0,
+            unit: "%",
+            plain: true,
+          },
+          {
+            label: "Design score",
+            get: function (c) {
+              return c.score.score;
+            },
+            fmt: 1,
+            unit: "%",
+            best: "high",
+          },
+          {
+            label: "Total travel",
+            get: function (c) {
+              return toUnits(c.score.travel);
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Loaded",
+            get: function (c) {
+              return toUnits(c.score.loadedTravel);
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Empty",
+            get: function (c) {
+              return toUnits(c.score.emptyTravel);
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Blocked trips",
+            get: function (c) {
+              return c.score.unreachable;
+            },
+            fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Overlap",
+            get: function (c) {
+              return c.overlap;
+            },
+            fmt: 2,
+            best: "low",
+          },
+          {
+            label: "Drift",
+            get: function (c) {
+              return c.drift;
+            },
+            fmt: 1,
+            best: "low",
+          },
+        ];
+
+        var thead = el("thead");
+        var head = el("tr");
+        head.appendChild(el("th", { class: "corner", text: "Layout" }));
+        COLUMNS.forEach(function (col) {
+          head.appendChild(el("th", { text: col.label }));
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var best = {};
+        COLUMNS.forEach(function (col, ci) {
+          if (!col.best) {
+            best[ci] = null;
+            return;
+          }
+          var pick = null;
+          alts.forEach(function (cand) {
+            var v = col.get(cand);
+            if (pick === null) pick = v;
+            else pick = col.best === "high" ? Math.max(pick, v) : Math.min(pick, v);
+          });
+          best[ci] = pick;
+        });
+
+        var tbody = el("tbody");
+        alts.forEach(function (cand, i) {
+          var tr = el("tr", { class: i === state.blockPick ? "live" : "" });
+          tr.appendChild(el("td", { class: "rowhead", text: "#" + (i + 1) }));
+          COLUMNS.forEach(function (col, ci) {
+            var v = col.get(cand);
+            var isBest = best[ci] !== null && Math.abs(v - best[ci]) < 1e-9;
+            tr.appendChild(
+              el("td", {
+                class: "total" + (isBest ? " bestcell" : ""),
+                text: v.toFixed(col.fmt) + (col.unit || ""),
+              }),
+            );
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+
       function renderFlowGraph() {
         var host = document.getElementById("flow-graph");
         if (!host) return;
@@ -9671,6 +10308,103 @@
         renderSkeleton();
       });
 
+      /* ---- block layout ---- */
+
+      document
+        .getElementById("block-gross")
+        .addEventListener("change", function (ev) {
+          state.blockGrossMode = ev.target.value === "fill" ? "fill" : "percent";
+        });
+
+      document
+        .getElementById("block-metric")
+        .addEventListener("change", function (ev) {
+          state.blockMetric = ev.target.value;
+          if (state.blockAlts && state.blockAlts.length) {
+            state.blockAlts.forEach(function (cand) {
+              cand.score = measureCandidate(cand);
+            });
+            renderBlockLayouts();
+          }
+        });
+
+      document
+        .getElementById("block-pct")
+        .addEventListener("change", function (ev) {
+          var v = parseFloat(ev.target.value);
+          state.blockGrossPct = isNaN(v) ? 30 : Math.max(0, Math.min(200, v));
+          ev.target.value = String(state.blockGrossPct);
+        });
+
+      document
+        .getElementById("block-count")
+        .addEventListener("change", function (ev) {
+          var v = parseInt(ev.target.value, 10);
+          state.blockCount = isNaN(v) ? 4 : Math.max(1, Math.min(8, v));
+          ev.target.value = String(state.blockCount);
+        });
+
+      function currentSkeleton() {
+        var alts = skeletonAlternatives();
+        if (alts.length) return alts[Math.min(state.skelPick, alts.length - 1)];
+        var kept = state.skelHistory || [];
+        return kept.length ? kept[kept.length - 1].alt : null;
+      }
+
+      document
+        .getElementById("block-generate")
+        .addEventListener("click", function () {
+          var alt = currentSkeleton();
+          if (!alt) {
+            window.alert("Draw or pick a design skeleton first.");
+            return;
+          }
+          state.blockAlts = generateBlockLayouts(alt, state.blockCount || 4);
+          state.blockPick = 0;
+          renderBlockLayouts();
+        });
+
+      document
+        .getElementById("block-accept")
+        .addEventListener("click", function () {
+          var alts = state.blockAlts || [];
+          if (!alts.length) return;
+          var cand = alts[Math.min(state.blockPick, alts.length - 1)];
+          if (
+            !window.confirm(
+              "Put this block layout on the Layout page? It replaces the centers and their stations; the relationships and flows are untouched.\n\n" +
+                "These are gross blocks with no aisles cut yet, so the aisle-based scores on the other pages read worse than the figures here until the centers come back to their net size.",
+            )
+          )
+            return;
+          /* The generated layout becomes the live one, so every score, matrix and
+           drawing in the rest of the app answers it from here on. */
+          var geo = normalizeStations({
+            building: state.building,
+            units: state.units,
+            kinds: kindList(),
+            centers: cand.centers.map(function (c) {
+              return {
+                id: c.id,
+                note: c.note || "",
+                x: c.x,
+                y: c.y,
+                w: c.w,
+                h: c.h,
+                kind: c.kind,
+                stations: (c.stations || []).map(function (st) {
+                  return { id: st.id, fn: st.fn, edge: st.edge, t: st.t };
+                }),
+              };
+            }),
+          });
+          state.centers = geo.centers;
+          saveGeometry();
+          refreshAll();
+          renderFlow();
+          document.getElementById("tab-btn-layout").click();
+        });
+
       document
         .getElementById("flow-detail")
         .addEventListener("change", function (ev) {
@@ -9789,7 +10523,10 @@
           /* both scoring pages read geometry that may have moved meanwhile */
           if (pair[1] === "tab-proximity") renderRelationshipView();
           if (pair[1] === "tab-flow") renderFlow();
-          if (pair[1] === "tab-skeleton") renderSkeleton();
+          if (pair[1] === "tab-skeleton") {
+            renderSkeleton();
+            renderBlockLayouts();
+          }
           window.scrollTo({ top: 0 });
         });
       });
@@ -9963,7 +10700,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261003204147";
+      window.__BUILD__ = "20261003205509";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
