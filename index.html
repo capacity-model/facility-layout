@@ -1051,6 +1051,51 @@
         font-weight: 700;
       }
 
+      .skel-alts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 0 0 12px;
+      }
+
+      .skel-alt {
+        border: 1px solid var(--line, #d7dce2);
+        border-radius: 4px;
+        padding: 4px;
+        background: #fff;
+        cursor: pointer;
+        text-align: center;
+      }
+
+      .skel-alt.current {
+        border-color: var(--entered-line, #0a6b2b);
+        box-shadow: 0 0 0 2px var(--entered-fill, #e6f4ea);
+      }
+
+      .skel-alt svg {
+        display: block;
+        width: 132px;
+        height: 110px;
+      }
+
+      .skel-alt span {
+        display: block;
+        font-size: 11px;
+        color: var(--muted, #5a6572);
+        padding-top: 2px;
+      }
+
+      .skel-h3 {
+        margin: 18px 0 4px;
+        font-size: 15px;
+      }
+
+      .skel-history {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
       .bandbar {
         display: flex;
         align-items: center;
@@ -1685,6 +1730,16 @@
         >
           Flow travel scoring
         </button>
+        <button
+          class="tab"
+          id="tab-btn-skeleton"
+          type="button"
+          role="tab"
+          aria-controls="tab-skeleton"
+          aria-selected="false"
+        >
+          Design skeleton
+        </button>
       </nav>
 
       <div class="tabpanel" id="tab-layout" role="tabpanel">
@@ -2313,6 +2368,91 @@
         </section>
       </div>
 
+      <div class="tabpanel" id="tab-skeleton" role="tabpanel" hidden>
+        <section class="panel skel">
+          <div class="scale-head">
+            <h2>Design skeleton</h2>
+            <div class="geo-tools">
+              <span class="constraint-cell">
+                <input id="skel-flows" type="checkbox" checked />
+                Flows
+              </span>
+              <span class="constraint-cell">
+                <input id="skel-rels" type="checkbox" checked />
+                Relationships
+              </span>
+              <label class="constraint-cell">
+                Nodes
+                <select id="skel-size">
+                  <option value="area">sized by area</option>
+                  <option value="equal">all the same</option>
+                </select>
+              </label>
+              <label class="constraint-cell">
+                Room
+                <input
+                  id="skel-inflate"
+                  class="f num"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="5"
+                  value="25"
+                  aria-label="building inflation percent"
+                />
+                %
+              </label>
+            </div>
+          </div>
+
+          <p class="scale-lede">
+            Before a layout has shapes it has a topology: what sits next to what,
+            and which pairs have to stay apart. The skeleton is that topology, laid
+            out from whichever links the subset band in the flow section has left
+            standing &mdash; so narrow the band to the heaviest tenth, draw a
+            skeleton on it, then widen the band and refine. Every link pulls its two
+            centers toward the separation it wants: a flow simply wants to be short,
+            while a proximity relationship wants the distance at which it is
+            satisfied, which for <em>Far</em> means pushing apart rather than
+            together.
+          </p>
+
+          <div class="bandbar">
+            <button class="primary" id="skel-generate" type="button">
+              Generate alternatives
+            </button>
+            <input
+              id="skel-count"
+              class="f num"
+              type="number"
+              min="1"
+              max="12"
+              step="1"
+              value="4"
+              aria-label="how many alternatives"
+            />
+            <button id="skel-refine" type="button">Refine from this one</button>
+            <button id="skel-accept" type="button">Accept</button>
+            <button id="skel-reject" type="button">Reject</button>
+            <span class="case-note" id="skel-note"></span>
+          </div>
+
+          <div class="skel-alts" id="skel-alts"></div>
+
+          <div class="paper geo-paper">
+            <div id="skel-canvas"></div>
+          </div>
+
+          <div class="scalewrap">
+            <table class="flowtable compare" id="skel-scores"></table>
+          </div>
+
+          <h3 class="skel-h3">Accepted skeletons</h3>
+          <p class="note" id="skel-history-note"></p>
+          <div class="skel-history" id="skel-history"></div>
+        </section>
+      </div>
+
       <footer class="pagefoot">
         <p>
           Interactive Layout Design and Evaluation — ISyE 6202 &amp; 6335 Supply
@@ -2596,6 +2736,15 @@
         flowDetail: "station",
         bandLow: 0,
         bandHigh: 100,
+        skelUseFlows: true,
+        skelUseRels: true,
+        skelNodeSize: "area",
+        skelInflate: 25,
+        skelAlternatives: 4,
+        skelPick: 0,
+        skeleton: null,
+        skelRounds: [],
+        skelHistory: [],
         flowEntry: "matrix",
         units: "m",
         stationPreset: "in-out",
@@ -7696,6 +7845,729 @@
           : "No layer is turned on.";
       }
 
+      /* ==================================================================
+         Design skeleton (Montreuil, Venkatadri & Ratliff 1993)
+
+         Before a layout has shapes it has a topology: which center sits north of
+         which, what is next to what, which pairs must not be near each other. A
+         skeleton is that topology drawn as nodes and links, laid out from a chosen
+         subset of the flows or the proximity relationships, and it is what a block
+         layout is later grown from.
+
+         The drawing is made by relaxation. Every link pulls its two nodes toward
+         the separation it wants — nothing for a flow, which simply wants to be
+         short, and the distance at which it is fully satisfied for a proximity
+         relationship, which may be far rather than near. Every pair of nodes
+         pushes apart if they are closer than their radii allow, and the whole
+         cloud is held inside the building. Different starting points settle into
+         different topologies, which is what gives the user alternatives to
+         contrast.
+         ================================================================== */
+
+      var SKEL_ROUND_WEIGHT = 1.6;
+
+      /* A small seeded generator, so the same request always draws the same
+         alternatives and a skeleton the user liked can be reproduced. */
+      function seededRandom(seed) {
+        var a = seed >>> 0;
+        return function () {
+          a = (a + 0x6d2b79f5) >>> 0;
+          var t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      /* The separation a relationship is satisfied at: where its curve first
+         reaches one, or the top of its bell. */
+      function idealSeparation(proximityName) {
+        var c = state.curves[proximityName];
+        if (!c) return 0;
+        return c.bell ? c.peak : c.at1;
+      }
+
+      function skeletonRadius(c, mode, scale) {
+        if (mode === "equal") return scale;
+        var area = Math.max(1, c.w * c.h);
+        return Math.sqrt(area / Math.PI) * scale;
+      }
+
+      /* The nodes and links a skeleton is drawn from: the centers that take part,
+         and whichever of the flows and the relationships the subset band has left
+         standing. */
+      function skeletonInput() {
+        var nodes = state.centers.map(function (c) {
+          return { id: c.id, c: c };
+        });
+        var index = {};
+        nodes.forEach(function (n, i) {
+          index[n.id] = i;
+        });
+
+        var links = [];
+        var seen = {};
+        function push(key, a, b, weight, ideal, kind, proximity) {
+          if (a === undefined || b === undefined || a === b) return;
+          if (seen[key]) {
+            seen[key].weight += weight;
+            return;
+          }
+          var link = {
+            key: key,
+            a: a,
+            b: b,
+            weight: weight,
+            ideal: ideal,
+            kind: kind,
+            proximity: proximity || null,
+          };
+          seen[key] = link;
+          links.push(link);
+        }
+
+        if (state.skelUseFlows) {
+          var routes = flowRoutes();
+          routes.forEach(function (r) {
+            var i = index[r.fromId];
+            var j = index[r.toId];
+            if (i === undefined || j === undefined) return;
+            /* A flow has no distance it prefers; it wants to be short, so its
+               ideal is nothing and the repulsion decides how close is possible. */
+            var key = "f:" + Math.min(i, j) + "-" + Math.max(i, j);
+            push(key, Math.min(i, j), Math.max(i, j), r.trips, 0, "flow");
+          });
+        }
+
+        if (state.skelUseRels) {
+          var allowed = state.rows.filter(function (row) {
+            return (
+              state.showProx[row.proximity] !== false &&
+              state.showImp[row.importance] !== false
+            );
+          });
+          var inBand = bandIncluder(allowed.map(relationshipWeight));
+          allowed.forEach(function (row, n) {
+            if (!inBand(relationshipWeight(row))) return;
+            var i = index[row.c1];
+            var j = index[row.c2];
+            if (i === undefined || j === undefined) return;
+            var imp = importanceOf(row.importance);
+            /* A Vital relationship carries no score but binds hardest, so on the
+               skeleton it pulls as hard as the heaviest level that does. */
+            var weight = imp.weight === null ? maxImportanceWeight() : imp.weight;
+            var key = "r:" + Math.min(i, j) + "-" + Math.max(i, j) + ":" + n;
+            push(
+              key,
+              Math.min(i, j),
+              Math.max(i, j),
+              weight,
+              idealSeparation(row.proximity),
+              "rel",
+              row.proximity,
+            );
+          });
+        }
+
+        /* Flows and weights live on wildly different scales — thousands of trips
+           against a weight of 64 — so each kind is normalised within itself. */
+        ["flow", "rel"].forEach(function (kind) {
+          var peak = 0;
+          links.forEach(function (l) {
+            if (l.kind === kind && l.weight > peak) peak = l.weight;
+          });
+          links.forEach(function (l) {
+            if (l.kind === kind) l.pull = peak > 0 ? l.weight / peak : 0;
+          });
+        });
+
+        return { nodes: nodes, links: links };
+      }
+
+      function maxImportanceWeight() {
+        var top = 1;
+        state.levels.forEach(function (lv) {
+          if (lv.weight !== null && lv.weight > top) top = lv.weight;
+        });
+        return top;
+      }
+
+      function skeletonBounds() {
+        var grow = 1 + Math.max(0, state.skelInflate) / 100;
+        return { w: state.building.w * grow, h: state.building.h * grow };
+      }
+
+      /* One relaxation from one starting arrangement. */
+      function relaxSkeleton(input, start, bounds, rounds) {
+        var n = input.nodes.length;
+        var mode = state.skelNodeSize;
+        var scale = mode === "equal" ? Math.min(bounds.w, bounds.h) / 18 : 1;
+        var radii = input.nodes.map(function (node) {
+          return skeletonRadius(node.c, mode, scale);
+        });
+        var gap = Math.min(bounds.w, bounds.h) * 0.02;
+
+        var x = start.map(function (p) {
+          return p.x;
+        });
+        var y = start.map(function (p) {
+          return p.y;
+        });
+
+        /* A link introduced in an earlier round holds its ground: the user built
+           the arrangement on it, and a later, lighter set must not undo it. */
+        function roundPull(link) {
+          if (!rounds || !rounds.length) return 1;
+          for (var r = 0; r < rounds.length; r++) {
+            if (rounds[r].indexOf(link.key) !== -1)
+              return Math.pow(SKEL_ROUND_WEIGHT, rounds.length - 1 - r);
+          }
+          return 1;
+        }
+
+        var STEPS = 600;
+        for (var step = 0; step < STEPS; step++) {
+          var cool = 1 - step / STEPS;
+          var dx = new Array(n).fill(0);
+          var dy = new Array(n).fill(0);
+
+          input.links.forEach(function (link) {
+            var i = link.a;
+            var j = link.b;
+            var vx = x[j] - x[i];
+            var vy = y[j] - y[i];
+            var d = Math.hypot(vx, vy) || 0.001;
+            var want = Math.max(link.ideal, radii[i] + radii[j] + gap);
+            var pull = link.pull * roundPull(link);
+            var force = 0.02 * pull * (d - want);
+            var ux = (vx / d) * force;
+            var uy = (vy / d) * force;
+            dx[i] += ux;
+            dy[i] += uy;
+            dx[j] -= ux;
+            dy[j] -= uy;
+          });
+
+          for (var i2 = 0; i2 < n; i2++) {
+            for (var j2 = i2 + 1; j2 < n; j2++) {
+              var vx2 = x[j2] - x[i2];
+              var vy2 = y[j2] - y[i2];
+              var d2 = Math.hypot(vx2, vy2) || 0.001;
+              var minSep = radii[i2] + radii[j2] + gap;
+              if (d2 < minSep) {
+                var push2 = 0.5 * (minSep - d2);
+                var ux2 = (vx2 / d2) * push2;
+                var uy2 = (vy2 / d2) * push2;
+                dx[i2] -= ux2;
+                dy[i2] -= uy2;
+                dx[j2] += ux2;
+                dy[j2] += uy2;
+              }
+            }
+          }
+
+          for (var k = 0; k < n; k++) {
+            x[k] += dx[k] * cool;
+            y[k] += dy[k] * cool;
+            x[k] = Math.max(radii[k], Math.min(bounds.w - radii[k], x[k]));
+            y[k] = Math.max(radii[k], Math.min(bounds.h - radii[k], y[k]));
+          }
+        }
+
+        /* The springs and the repulsion pull against each other, and a link that
+           wants its two centers adjacent will happily leave them a little on top
+           of one another. Overlap is not a trade-off the specification allows, so
+           the arrangement finishes with a pass that resolves it and nothing else:
+           the topology is already settled by here, and this only pushes nodes the
+           short distance needed to stop them sitting on each other. */
+        for (var pass = 0; pass < 240; pass++) {
+          var worst = 0;
+          for (var a = 0; a < n; a++) {
+            for (var b = a + 1; b < n; b++) {
+              var sx = x[b] - x[a];
+              var sy = y[b] - y[a];
+              var sd = Math.hypot(sx, sy);
+              var need = radii[a] + radii[b] + gap;
+              if (sd >= need) continue;
+              if (sd < 1e-6) {
+                /* Exactly coincident: nudge them apart along a fixed axis so the
+                   result stays reproducible. */
+                sx = 1;
+                sy = 0;
+                sd = 1;
+              }
+              var over = need - sd;
+              if (over > worst) worst = over;
+              var mx = (sx / sd) * over * 0.5;
+              var my = (sy / sd) * over * 0.5;
+              x[a] -= mx;
+              y[a] -= my;
+              x[b] += mx;
+              y[b] += my;
+            }
+          }
+          for (var c = 0; c < n; c++) {
+            x[c] = Math.max(radii[c], Math.min(bounds.w - radii[c], x[c]));
+            y[c] = Math.max(radii[c], Math.min(bounds.h - radii[c], y[c]));
+          }
+          if (worst < 1e-4) break;
+        }
+
+        return input.nodes.map(function (node, i) {
+          return { id: node.id, x: x[i], y: y[i], r: radii[i] };
+        });
+      }
+
+      /* How good a drawing is, in the terms the specification sets out. Each part
+         is reported as well as summed, because what the user is choosing between
+         is usually a trade between them. */
+      function scoreSkeleton(input, placed, bounds) {
+        var gap = Math.min(bounds.w, bounds.h) * 0.02;
+        var linkError = 0;
+        var pullTotal = 0;
+        var cardinal = 0;
+
+        input.links.forEach(function (link) {
+          var a = placed[link.a];
+          var b = placed[link.b];
+          var d = Math.hypot(b.x - a.x, b.y - a.y);
+          var want = Math.max(link.ideal, a.r + b.r + gap);
+          linkError += link.pull * Math.abs(d - want);
+          pullTotal += link.pull;
+
+          /* "Clearly N, NE, E, SE, S, SW, W or NW of each other": how far the
+             link lies from the nearest eighth of a turn. */
+          var angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+          var off = Math.abs(((((angle + 22.5) % 45) + 45) % 45) - 22.5);
+          cardinal += link.pull * off;
+        });
+
+        var overlap = 0;
+        for (var i = 0; i < placed.length; i++) {
+          for (var j = i + 1; j < placed.length; j++) {
+            var d2 = Math.hypot(
+              placed[j].x - placed[i].x,
+              placed[j].y - placed[i].y,
+            );
+            var minSep = placed[i].r + placed[j].r + gap;
+            if (d2 < minSep) overlap += minSep - d2;
+          }
+        }
+
+        var outside = 0;
+        placed.forEach(function (p) {
+          outside += Math.max(0, p.r - p.x) + Math.max(0, p.x + p.r - bounds.w);
+          outside += Math.max(0, p.r - p.y) + Math.max(0, p.y + p.r - bounds.h);
+        });
+
+        var meanError = pullTotal > 0 ? linkError / pullTotal : 0;
+        var meanCardinal = pullTotal > 0 ? cardinal / pullTotal : 0;
+        return {
+          linkError: meanError,
+          cardinal: meanCardinal,
+          overlap: overlap,
+          outside: outside,
+          /* One number to sort on. Overlap and overreach are failures rather than
+             trade-offs, so they are weighted far above the other two. */
+          total: meanError + meanCardinal * 0.15 + overlap * 4 + outside * 4,
+        };
+      }
+
+      function generateSkeletons(count, startFrom, rounds) {
+        var input = skeletonInput();
+        var bounds = skeletonBounds();
+        var out = [];
+        for (var s = 0; s < count; s++) {
+          var rand = seededRandom(1000 + s * 7919);
+          var start;
+          if (startFrom) {
+            /* A refinement adapts the drawing on screen rather than starting over:
+               the user chose that arrangement, and the links it was settled on
+               outrank the ones just added. Every alternative therefore descends
+               from it, nudged a little further apart as the list goes on so there
+               is still something to choose between. */
+            var jitter =
+              (s / Math.max(1, count - 1)) * Math.min(bounds.w, bounds.h) * 0.12;
+            start = input.nodes.map(function (node) {
+              var was = startFrom[node.id];
+              if (!was) return { x: rand() * bounds.w, y: rand() * bounds.h };
+              return {
+                x: was.x + (rand() - 0.5) * 2 * jitter,
+                y: was.y + (rand() - 0.5) * 2 * jitter,
+              };
+            });
+          } else {
+            start = input.nodes.map(function () {
+              return { x: rand() * bounds.w, y: rand() * bounds.h };
+            });
+          }
+          var placed = relaxSkeleton(input, start, bounds, rounds);
+          out.push({
+            seed: s,
+            placed: placed,
+            score: scoreSkeleton(input, placed, bounds),
+            links: input.links,
+            bounds: bounds,
+          });
+        }
+        out.sort(function (a, b) {
+          return a.score.total - b.score.total;
+        });
+        return out;
+      }
+
+      /* ------------------------------------------------------------------
+         Drawing a skeleton. Nodes are circles, because a skeleton says where
+         things are relative to each other and not yet what shape they are; links
+         are drawn in the colour of the relationship they came from, or the deck's
+         flow navy, and their width follows their pull.
+         ------------------------------------------------------------------ */
+
+      /* The layout editor's own dragging is wired to its coordinate space and to
+         saving geometry, neither of which a skeleton wants, so it gets its own:
+         the same pointer-capture dance against whichever svg it is drawn in. */
+      function dragInSvg(svg, node, onMove) {
+        function toLocal(event) {
+          if (!svg.createSVGPoint || !svg.getScreenCTM) return null;
+          var pt = svg.createSVGPoint();
+          pt.x = event.clientX;
+          pt.y = event.clientY;
+          var ctm = svg.getScreenCTM();
+          if (!ctm) return null;
+          var local = pt.matrixTransform(ctm.inverse());
+          return { x: local.x, y: local.y };
+        }
+        node.addEventListener("pointerdown", function (event) {
+          event.preventDefault();
+          if (node.setPointerCapture) node.setPointerCapture(event.pointerId);
+          var moved = function (ev) {
+            var now = toLocal(ev);
+            if (now) onMove(now);
+          };
+          var done = function () {
+            node.removeEventListener("pointermove", moved);
+            node.removeEventListener("pointerup", done);
+            node.removeEventListener("pointercancel", done);
+          };
+          node.addEventListener("pointermove", moved);
+          node.addEventListener("pointerup", done);
+          node.addEventListener("pointercancel", done);
+        });
+      }
+
+      function drawSkeleton(alt, opts) {
+        var small = opts && opts.small;
+        var B = alt.bounds;
+        var pad = Math.max(B.w, B.h) * 0.04;
+        var svg = svgEl("svg", {
+          viewBox:
+            -pad + " " + -pad + " " + (B.w + pad * 2) + " " + (B.h + pad * 2),
+          role: "img",
+          "aria-label": "Design skeleton",
+        });
+        svg.appendChild(
+          svgEl("rect", {
+            x: -pad,
+            y: -pad,
+            width: B.w + pad * 2,
+            height: B.h + pad * 2,
+            fill: PAPER_BG,
+          }),
+        );
+        svg.appendChild(
+          svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: B.w,
+            height: B.h,
+            fill: "#ffffff",
+            stroke: PAPER_INK,
+            "stroke-width": small ? 1 : 2,
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+        /* The building the centers actually have to fit inside, drawn inside the
+           room the skeleton is given to move in. */
+        svg.appendChild(
+          svgEl("rect", {
+            x: (B.w - state.building.w) / 2,
+            y: (B.h - state.building.h) / 2,
+            width: state.building.w,
+            height: state.building.h,
+            fill: "none",
+            stroke: PAPER_MUTED,
+            "stroke-width": 1,
+            "stroke-dasharray": "3 3",
+            "vector-effect": "non-scaling-stroke",
+          }),
+        );
+
+        var at = {};
+        alt.placed.forEach(function (p) {
+          at[p.id] = p;
+        });
+
+        alt.links.forEach(function (link) {
+          var a = alt.placed[link.a];
+          var b = alt.placed[link.b];
+          if (!a || !b) return;
+          var prox = link.proximity ? proximityOf(link.proximity) : null;
+          var colour =
+            link.kind === "flow"
+              ? FLOW_INK.loaded
+              : (prox && prox.colour) || PAPER_MUTED;
+          svg.appendChild(
+            svgEl("line", {
+              x1: a.x,
+              y1: a.y,
+              x2: b.x,
+              y2: b.y,
+              stroke: colour,
+              "stroke-width": (small ? 0.6 : 0.4) + link.pull * (small ? 1.6 : 2.4),
+              "stroke-opacity": 0.75,
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+        });
+
+        alt.placed.forEach(function (p) {
+          var c = centerById(p.id);
+          var node = svgEl("circle", {
+            class: "skel-node",
+            cx: p.x,
+            cy: p.y,
+            r: p.r,
+            fill: c ? kindFill(c.kind) : "#eeeeee",
+            stroke: PAPER_INK,
+            "stroke-width": small ? 1 : 1.5,
+            "vector-effect": "non-scaling-stroke",
+          });
+          node.setAttribute("data-node", p.id);
+          svg.appendChild(node);
+          if (!small) {
+            var label = svgEl("text", {
+              x: p.x,
+              y: p.y + 0.8,
+              fill: PAPER_INK,
+              "font-size": Math.max(1.4, Math.min(p.r * 0.7, 2.6)),
+              "font-weight": 700,
+              "text-anchor": "middle",
+              "pointer-events": "none",
+            });
+            label.textContent = p.id;
+            svg.appendChild(label);
+          }
+        });
+        return svg;
+      }
+
+      function skeletonAlternatives() {
+        return state.skelAlts || [];
+      }
+
+      function renderSkeleton() {
+        var alts = skeletonAlternatives();
+        var strip = document.getElementById("skel-alts");
+        var canvas = document.getElementById("skel-canvas");
+        var note = document.getElementById("skel-note");
+        if (!strip || !canvas) return;
+        while (strip.firstChild) strip.removeChild(strip.firstChild);
+        while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
+
+        if (!alts.length) {
+          note.textContent =
+            "Nothing drawn yet — Generate alternatives lays out the links the subset band has left standing.";
+          renderSkeletonScores([]);
+          renderSkeletonHistory();
+          return;
+        }
+
+        alts.forEach(function (alt, i) {
+          var cell = el("div", {
+            class: "skel-alt" + (i === state.skelPick ? " current" : ""),
+          });
+          cell.appendChild(drawSkeleton(alt, { small: true }));
+          cell.appendChild(
+            el("span", {
+              text: "#" + (i + 1) + " · " + alt.score.total.toFixed(1),
+            }),
+          );
+          cell.addEventListener("click", function () {
+            state.skelPick = i;
+            renderSkeleton();
+          });
+          strip.appendChild(cell);
+        });
+
+        var chosen = alts[Math.min(state.skelPick, alts.length - 1)];
+        var big = drawSkeleton(chosen, {});
+        dragSkeletonNodes(big, chosen);
+        canvas.appendChild(big);
+
+        note.textContent =
+          chosen.links.length +
+          (chosen.links.length === 1 ? " link" : " links") +
+          " laid out, " +
+          alts.length +
+          " alternatives. Drag a node to edit; Accept keeps it.";
+
+        renderSkeletonScores(alts);
+        renderSkeletonHistory();
+      }
+
+      /* Editing a skeleton is moving a node, and the score follows at once so the
+         user can see whether the move helped. */
+      function dragSkeletonNodes(svg, alt) {
+        var input = { nodes: [], links: alt.links };
+        alt.placed.forEach(function (p) {
+          input.nodes.push({ id: p.id, c: centerById(p.id) });
+        });
+        [].slice
+          .call(svg.querySelectorAll("circle.skel-node"))
+          .forEach(function (node) {
+            var id = node.getAttribute("data-node");
+            var place = null;
+            alt.placed.forEach(function (p) {
+              if (p.id === id) place = p;
+            });
+            if (!place) return;
+            node.style.cursor = "move";
+            dragInSvg(svg, node, function (now) {
+              place.x = Math.max(place.r, Math.min(alt.bounds.w - place.r, now.x));
+              place.y = Math.max(place.r, Math.min(alt.bounds.h - place.r, now.y));
+              alt.score = scoreSkeleton(input, alt.placed, alt.bounds);
+              alt.edited = true;
+              renderSkeleton();
+            });
+          });
+      }
+
+      function renderSkeletonScores(alts) {
+        var table = document.getElementById("skel-scores");
+        if (!table) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+        if (!alts.length) return;
+
+        var COLUMNS = [
+          {
+            label: "Link error",
+            get: function (s) {
+              return s.linkError;
+            },
+            fmt: 1,
+          },
+          {
+            label: "Off cardinal",
+            get: function (s) {
+              return s.cardinal;
+            },
+            fmt: 1,
+            unit: "°",
+          },
+          {
+            label: "Overlap",
+            get: function (s) {
+              return s.overlap;
+            },
+            fmt: 2,
+          },
+          {
+            label: "Outside",
+            get: function (s) {
+              return s.outside;
+            },
+            fmt: 2,
+          },
+          {
+            label: "Total",
+            get: function (s) {
+              return s.total;
+            },
+            fmt: 1,
+          },
+        ];
+
+        var thead = el("thead");
+        var head = el("tr");
+        head.appendChild(el("th", { class: "corner", text: "Alternative" }));
+        COLUMNS.forEach(function (col) {
+          head.appendChild(el("th", { text: col.label }));
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var best = {};
+        COLUMNS.forEach(function (col, ci) {
+          var pick = null;
+          alts.forEach(function (alt) {
+            var v = col.get(alt.score);
+            pick = pick === null ? v : Math.min(pick, v);
+          });
+          best[ci] = pick;
+        });
+
+        var tbody = el("tbody");
+        alts.forEach(function (alt, i) {
+          var tr = el("tr", { class: i === state.skelPick ? "live" : "" });
+          tr.appendChild(
+            el("td", {
+              class: "rowhead",
+              text: "#" + (i + 1) + (alt.edited ? " (edited)" : ""),
+            }),
+          );
+          COLUMNS.forEach(function (col, ci) {
+            var v = col.get(alt.score);
+            tr.appendChild(
+              el("td", {
+                class: "total" + (Math.abs(v - best[ci]) < 1e-9 ? " bestcell" : ""),
+                text: v.toFixed(col.fmt) + (col.unit || ""),
+              }),
+            );
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+
+      function renderSkeletonHistory() {
+        var host = document.getElementById("skel-history");
+        var note = document.getElementById("skel-history-note");
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        var kept = state.skelHistory || [];
+        note.textContent = kept.length
+          ? kept.length +
+            (kept.length === 1 ? " skeleton kept." : " skeletons kept.") +
+            " Click one to bring it back and carry on from it."
+          : "None accepted yet. Accept keeps the skeleton on screen, with the subset it was drawn from.";
+
+        kept.forEach(function (entry, i) {
+          var cell = el("div", { class: "skel-alt" });
+          cell.appendChild(drawSkeleton(entry.alt, { small: true }));
+          cell.appendChild(el("span", { text: entry.label }));
+          cell.addEventListener("click", function () {
+            state.skelAlts = [cloneAlt(entry.alt)];
+            state.skelPick = 0;
+            state.skelRounds = entry.rounds.slice();
+            renderSkeleton();
+          });
+          host.appendChild(cell);
+        });
+      }
+
+      function cloneAlt(alt) {
+        return {
+          seed: alt.seed,
+          bounds: { w: alt.bounds.w, h: alt.bounds.h },
+          links: alt.links,
+          score: alt.score,
+          edited: alt.edited,
+          placed: alt.placed.map(function (p) {
+            return { id: p.id, x: p.x, y: p.y, r: p.r };
+          }),
+        };
+      }
+
       function renderFlowGraph() {
         var host = document.getElementById("flow-graph");
         if (!host) return;
@@ -8402,6 +9274,119 @@
         saveGeometry();
       });
 
+      /* ---- design skeleton ---- */
+
+      function skelCheckbox(id, key) {
+        document.getElementById(id).addEventListener("change", function (ev) {
+          state[key] = ev.target.checked;
+        });
+      }
+      skelCheckbox("skel-flows", "skelUseFlows");
+      skelCheckbox("skel-rels", "skelUseRels");
+
+      document
+        .getElementById("skel-size")
+        .addEventListener("change", function (ev) {
+          state.skelNodeSize = ev.target.value === "equal" ? "equal" : "area";
+        });
+
+      document
+        .getElementById("skel-inflate")
+        .addEventListener("change", function (ev) {
+          var v = parseFloat(ev.target.value);
+          state.skelInflate = isNaN(v) ? 25 : Math.max(0, Math.min(200, v));
+          ev.target.value = String(state.skelInflate);
+        });
+
+      document
+        .getElementById("skel-count")
+        .addEventListener("change", function (ev) {
+          var v = parseInt(ev.target.value, 10);
+          state.skelAlternatives = isNaN(v) ? 4 : Math.max(1, Math.min(12, v));
+          ev.target.value = String(state.skelAlternatives);
+        });
+
+      document
+        .getElementById("skel-generate")
+        .addEventListener("click", function () {
+          var input = skeletonInput();
+          /* A fresh request starts the record of rounds again: these links are the
+           first the arrangement has had to honour. */
+          state.skelRounds = [
+            input.links.map(function (l) {
+              return l.key;
+            }),
+          ];
+          state.skelAlts = generateSkeletons(state.skelAlternatives, null, null);
+          state.skelPick = 0;
+          renderSkeleton();
+        });
+
+      document.getElementById("skel-refine").addEventListener("click", function () {
+        var alts = skeletonAlternatives();
+        if (!alts.length) return;
+        var from = {};
+        alts[Math.min(state.skelPick, alts.length - 1)].placed.forEach(
+          function (p) {
+            from[p.id] = { x: p.x, y: p.y };
+          },
+        );
+        /* Links the arrangement has already been built on keep their standing;
+           anything new joins the latest round and pulls more gently. */
+        var input = skeletonInput();
+        var known = {};
+        state.skelRounds.forEach(function (round) {
+          round.forEach(function (key) {
+            known[key] = true;
+          });
+        });
+        var fresh = input.links
+          .map(function (l) {
+            return l.key;
+          })
+          .filter(function (key) {
+            return !known[key];
+          });
+        if (fresh.length) state.skelRounds = state.skelRounds.concat([fresh]);
+        state.skelAlts = generateSkeletons(
+          state.skelAlternatives,
+          from,
+          state.skelRounds,
+        );
+        state.skelPick = 0;
+        renderSkeleton();
+      });
+
+      document.getElementById("skel-accept").addEventListener("click", function () {
+        var alts = skeletonAlternatives();
+        if (!alts.length) return;
+        var chosen = alts[Math.min(state.skelPick, alts.length - 1)];
+        state.skelHistory = (state.skelHistory || []).concat([
+          {
+            label:
+              "#" +
+              (state.skelHistory.length + 1) +
+              " \u00b7 " +
+              chosen.links.length +
+              " links \u00b7 " +
+              chosen.score.total.toFixed(1),
+            alt: cloneAlt(chosen),
+            rounds: state.skelRounds.slice(),
+          },
+        ]);
+        renderSkeleton();
+      });
+
+      document.getElementById("skel-reject").addEventListener("click", function () {
+        var alts = skeletonAlternatives();
+        if (!alts.length) return;
+        state.skelAlts = alts.filter(function (_, i) {
+          return i !== state.skelPick;
+        });
+        state.skelPick = 0;
+        renderSkeleton();
+      });
+
       document
         .getElementById("flow-detail")
         .addEventListener("change", function (ev) {
@@ -8507,6 +9492,7 @@
         ["tab-btn-layout", "tab-layout"],
         ["tab-btn-proximity", "tab-proximity"],
         ["tab-btn-flow", "tab-flow"],
+        ["tab-btn-skeleton", "tab-skeleton"],
       ].forEach(function (pair, index, all) {
         document.getElementById(pair[0]).addEventListener("click", function () {
           all.forEach(function (other) {
@@ -8519,6 +9505,7 @@
           /* both scoring pages read geometry that may have moved meanwhile */
           if (pair[1] === "tab-proximity") renderRelationshipView();
           if (pair[1] === "tab-flow") renderFlow();
+          if (pair[1] === "tab-skeleton") renderSkeleton();
           window.scrollTo({ top: 0 });
         });
       });
@@ -8692,7 +9679,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261003202529";
+      window.__BUILD__ = "20261003203454";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
