@@ -2575,6 +2575,10 @@
                   aria-label="trips per lane per period"
                 />
               </label>
+              <span class="constraint-cell">
+                <input id="net-shift" type="checkbox" />
+                Move centers to fit the aisles
+              </span>
               <label class="constraint-cell">
                 Two-way below
                 <input
@@ -2600,6 +2604,17 @@
             where two segments cross they make an intersection as wide as the lanes
             meeting there. Empty trips count throughout, because a vehicle returning
             for its next load occupies a lane exactly as a loaded one does.
+          </p>
+
+          <p class="scale-lede">
+            Left alone, the aisles take the room the layout already leaves them.
+            <em>Move centers to fit the aisles</em> instead gives the lanes the
+            width their traffic asks for and pushes the centers aside to make it
+            &mdash; north, east, south or west, as the specification puts it. On a
+            tight building that costs proximity score and can press a center against
+            the wall, so both are reported: how far the centers were shifted, how
+            much was pushed off the plan, and how much of the width the traffic
+            asked for the floor could actually give.
           </p>
 
           <div class="bandbar">
@@ -2940,6 +2955,7 @@
         netAlts: [],
         netPick: 0,
         netCount: 3,
+        netShift: false,
         skelAlternatives: 4,
         skelPick: 0,
         skeleton: null,
@@ -9724,6 +9740,69 @@
       /* What each segment and each junction carries, counted from the trips that
          cross it rather than from the cells, so a vehicle is counted once per
          corridor however many cells it occupies there. */
+      /* Routes wander, so the cells they use come out as a scatter of thin
+         parallel corridors where a designer would draw one. The specification
+         asks for the network to be kept simple — fewer links, fewer
+         intersections, less total length — so segments running the same way, on
+         nearly the same line, with spans that meet, are made into one. */
+      function mergeSegments(aisles, grid) {
+        var segments = aisles.segments;
+        var SLACK = 4; /* cells across: two metres */
+        var merged = [];
+        var into = {};
+        segments.forEach(function (seg, i) {
+          var host = null;
+          merged.forEach(function (other, k) {
+            if (host !== null || other.dir !== seg.dir) return;
+            var sameLine =
+              seg.dir === "h"
+                ? Math.abs(
+                    (other.minY + other.maxY) / 2 - (seg.minY + seg.maxY) / 2,
+                  )
+                : Math.abs(
+                    (other.minX + other.maxX) / 2 - (seg.minX + seg.maxX) / 2,
+                  );
+            if (sameLine > SLACK) return;
+            var touches =
+              seg.dir === "h"
+                ? seg.minX <= other.maxX + SLACK && other.minX <= seg.maxX + SLACK
+                : seg.minY <= other.maxY + SLACK && other.minY <= seg.maxY + SLACK;
+            if (!touches) return;
+            host = k;
+          });
+          if (host === null) {
+            into[i] = merged.length;
+            merged.push({
+              dir: seg.dir,
+              cells: seg.cells.slice(),
+              minX: seg.minX,
+              maxX: seg.maxX,
+              minY: seg.minY,
+              maxY: seg.maxY,
+            });
+            return;
+          }
+          var m = merged[host];
+          into[i] = host;
+          m.cells = m.cells.concat(seg.cells);
+          m.minX = Math.min(m.minX, seg.minX);
+          m.maxX = Math.max(m.maxX, seg.maxX);
+          m.minY = Math.min(m.minY, seg.minY);
+          m.maxY = Math.max(m.maxY, seg.maxY);
+        });
+
+        var segOf = {};
+        Object.keys(aisles.segOf).forEach(function (key) {
+          segOf[key] = into[aisles.segOf[key]];
+        });
+        return {
+          segments: merged,
+          segOf: segOf,
+          axis: aisles.axis,
+          load: aisles.load,
+        };
+      }
+
       function aisleTraffic(grid, traced, aisles) {
         var segments = aisles.segments;
         segments.forEach(function (seg) {
@@ -9815,6 +9894,97 @@
         return list;
       }
 
+      /* Rectangles pushed apart along the axis they overlap least, then held
+         inside the building. Shared by the block stage, which packs gross blocks,
+         and the net stage, which has to re-settle them after the aisles have
+         shouldered them aside. */
+      function separateRects(list, B, passes) {
+        var clamped = 0;
+        for (var pass = 0; pass < (passes || 240); pass++) {
+          var worst = 0;
+          for (var i = 0; i < list.length; i++) {
+            for (var j = i + 1; j < list.length; j++) {
+              var a = list[i];
+              var b = list[j];
+              var ax = a.x + a.w / 2;
+              var ay = a.y + a.h / 2;
+              var bx = b.x + b.w / 2;
+              var by = b.y + b.h / 2;
+              var ox = (a.w + b.w) / 2 - Math.abs(bx - ax);
+              var oy = (a.h + b.h) / 2 - Math.abs(by - ay);
+              if (ox <= 0 || oy <= 0) continue;
+              if (Math.min(ox, oy) > worst) worst = Math.min(ox, oy);
+              if (ox < oy) {
+                var dx = (bx >= ax ? 1 : -1) * ox * 0.5;
+                a.x -= dx;
+                b.x += dx;
+              } else {
+                var dy = (by >= ay ? 1 : -1) * oy * 0.5;
+                a.y -= dy;
+                b.y += dy;
+              }
+            }
+          }
+          list.forEach(function (c) {
+            var x = Math.max(0, Math.min(B.w - c.w, c.x));
+            var y = Math.max(0, Math.min(B.h - c.h, c.y));
+            clamped += Math.abs(x - c.x) + Math.abs(y - c.y);
+            c.x = x;
+            c.y = y;
+          });
+          if (worst < 1e-3) break;
+        }
+        return clamped;
+      }
+
+      /* An aisle segment needs the width its traffic asks for, and the centers
+         beside it are what stands in the way. Each one is pushed north, east,
+         south or west by the shortfall — the specification's own move — and the
+         building edge is what stops it, which is where an overreach shows up. */
+      function widenForAisles(centers, segments, B) {
+        var moved = 0;
+        segments.forEach(function (seg) {
+          if (!(seg.width > 0) || seg.total <= 0) return;
+          var half = seg.width / 2;
+          if (seg.dir === "h") {
+            var cy = ((seg.minY + seg.maxY) / 2 + 0.5) * CELL;
+            var x0 = seg.minX * CELL;
+            var x1 = (seg.maxX + 1) * CELL;
+            centers.forEach(function (c) {
+              if (c.x + c.w <= x0 || c.x >= x1) return;
+              var top = c.y + c.h;
+              if (top > cy - half && top <= cy) {
+                var up = cy - half - top;
+                c.y += up;
+                moved += -up;
+              } else if (c.y < cy + half && c.y >= cy) {
+                var down = cy + half - c.y;
+                c.y += down;
+                moved += down;
+              }
+            });
+          } else {
+            var cx = ((seg.minX + seg.maxX) / 2 + 0.5) * CELL;
+            var y0 = seg.minY * CELL;
+            var y1 = (seg.maxY + 1) * CELL;
+            centers.forEach(function (c) {
+              if (c.y + c.h <= y0 || c.y >= y1) return;
+              var right = c.x + c.w;
+              if (right > cx - half && right <= cx) {
+                var left = cx - half - right;
+                c.x += left;
+                moved += -left;
+              } else if (c.x < cx + half && c.x >= cx) {
+                var rightward = cx + half - c.x;
+                c.x += rightward;
+                moved += rightward;
+              }
+            });
+          }
+        });
+        return moved;
+      }
+
       function netCandidate(blockCand) {
         var centers = netCenters(blockCand);
         var keep = state.centers;
@@ -9841,22 +10011,66 @@
           /* A net layout has its aisles, so this is the one stage measured the way
              the rest of the app measures: along them. */
           state.distMetric = "Aisle";
-          var grid = buildGrid();
-          var routes = flowRoutes();
-          var traced = [];
-          routes.forEach(function (r) {
-            var path = aislePath(grid, r.from, r.to);
-            if (path) traced.push({ route: r, points: simplify(path) });
-          });
-          var aisles = extractAisles(grid, traced);
-          var junctions = aisleTraffic(grid, traced, aisles);
+          /* Routing, sizing the lanes, then making room for them: each round the
+             aisles ask for the width their traffic needs, the centers beside them
+             give it up, and the traffic is routed again through what that leaves.
+             A few rounds settle it, and the figures reported are the last round's,
+             so they describe the layout as it finally stands. */
+          var B = state.building;
+          var grid, routes, traced, aisles, junctions;
+          var shifted = 0;
+          var overreach = 0;
+          var tight = false;
+          var fit = 1;
+          var ROUNDS = 4;
+          for (var round = 0; round < ROUNDS; round++) {
+            grid = buildGrid();
+            routes = flowRoutes();
+            traced = [];
+            routes.forEach(function (r) {
+              var path = aislePath(grid, r.from, r.to);
+              if (path) traced.push({ route: r, points: simplify(path) });
+            });
+            aisles = mergeSegments(extractAisles(grid, traced), grid);
+            junctions = aisleTraffic(grid, traced, aisles);
+            if (round === ROUNDS - 1 || !state.netShift) break;
+            /* The lanes the traffic asks for may want more floor than the building
+               has spare. Rather than shove the centers off the plan chasing them,
+               the widths are brought back in proportion so the aisle set fits the
+               floor that is actually free, and the layout reports how much of what
+               the traffic asked for it was able to give. */
+            var free = B.w * B.h;
+            state.centers.forEach(function (c) {
+              free -= c.w * c.h;
+            });
+            var wanted = 0;
+            (aisles.segments || []).forEach(function (seg) {
+              wanted += seg.length * seg.width;
+            });
+            fit = wanted > 0 ? Math.min(1, free / wanted) : 1;
+            if (fit < 1) {
+              tight = true;
+              (aisles.segments || []).forEach(function (seg) {
+                seg.wantWidth = seg.width;
+                seg.width = seg.width * fit;
+              });
+            }
+            var moved = widenForAisles(state.centers, aisles.segments || [], B);
+            if (moved < 0.05) break;
+            shifted += moved;
+            overreach += separateRects(state.centers, B);
+          }
           var score = measureNow();
           return {
-            centers: copy.centers.map(serializeCenter),
+            centers: state.centers.map(serializeCenter),
             segments: aisles.segments || [],
             junctions: junctions,
             traced: traced.length,
             routes: routes.length,
+            shifted: shifted,
+            overreach: overreach,
+            tight: tight,
+            fit: fit,
             score: score,
           };
         } finally {
@@ -10097,6 +10311,31 @@
               return aisleArea(c);
             },
             fmt: 0,
+            best: "low",
+          },
+          {
+            label: "Lane width given",
+            get: function (c) {
+              return (c.fit === undefined ? 1 : c.fit) * 100;
+            },
+            fmt: 0,
+            unit: "%",
+            best: "high",
+          },
+          {
+            label: "Centers shifted",
+            get: function (c) {
+              return toUnits(c.shifted || 0);
+            },
+            fmt: 1,
+            best: "low",
+          },
+          {
+            label: "Pushed off plan",
+            get: function (c) {
+              return toUnits(c.overreach || 0);
+            },
+            fmt: 1,
             best: "low",
           },
         ];
@@ -11219,6 +11458,12 @@
       netNumber("net-count", "netCount", 1, 6);
 
       document
+        .getElementById("net-shift")
+        .addEventListener("change", function (ev) {
+          state.netShift = ev.target.checked;
+        });
+
+      document
         .getElementById("net-generate")
         .addEventListener("click", function () {
           var alts = state.blockAlts || [];
@@ -11551,7 +11796,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261003210056";
+      window.__BUILD__ = "20261003210739";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
