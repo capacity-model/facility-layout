@@ -2381,6 +2381,10 @@
                 <input id="skel-rels" type="checkbox" checked />
                 Relationships
               </span>
+              <span class="constraint-cell">
+                <input id="skel-stations" type="checkbox" checked />
+                I/O stations
+              </span>
               <label class="constraint-cell">
                 Nodes
                 <select id="skel-size">
@@ -2434,6 +2438,7 @@
             <button id="skel-refine" type="button">Refine from this one</button>
             <button id="skel-accept" type="button">Accept</button>
             <button id="skel-reject" type="button">Reject</button>
+            <button id="skel-forget" type="button">Clear history</button>
             <span class="case-note" id="skel-note"></span>
           </div>
 
@@ -2740,6 +2745,7 @@
         skelUseRels: true,
         skelNodeSize: "area",
         skelInflate: 25,
+        skelStations: true,
         skelAlternatives: 4,
         skelPick: 0,
         skeleton: null,
@@ -5173,6 +5179,46 @@
          ------------------------------------------------------------------ */
 
       var CASES_KEY = "isye6202.layout.cases.v1";
+      var SKEL_KEY = "isye6202.layout.skeletons.v1";
+
+      /* Accepted skeletons belong to the case, and the working draft is a case
+         too, so they are kept across a reload like everything else on the page. */
+      function saveSkeletons() {
+        try {
+          window.localStorage.setItem(
+            SKEL_KEY,
+            JSON.stringify(
+              (state.skelHistory || []).map(function (entry) {
+                return {
+                  label: entry.label,
+                  rounds: entry.rounds,
+                  alt: serializeSkeleton(entry.alt),
+                };
+              }),
+            ),
+          );
+        } catch (err) {
+          /* the page still works without a saved history */
+        }
+      }
+
+      function loadSkeletons() {
+        try {
+          var raw = window.localStorage.getItem(SKEL_KEY);
+          var parsed = raw ? JSON.parse(raw) : null;
+          if (!Array.isArray(parsed)) return [];
+          return parsed
+            .map(function (entry) {
+              var alt = reviveSkeleton(entry.alt);
+              return alt
+                ? { label: entry.label, rounds: entry.rounds || [], alt: alt }
+                : null;
+            })
+            .filter(Boolean);
+        } catch (err) {
+          return [];
+        }
+      }
 
       function readCases() {
         try {
@@ -5195,6 +5241,74 @@
         }
       }
 
+      /* A skeleton holds its links by node index, which only means anything
+         against the arrangement it was generated with. Written out, the ends are
+         named by their center instead, so a skeleton survives a reload and a case
+         that has since gained or lost a center. */
+      function serializeSkeleton(alt) {
+        var ids = alt.placed.map(function (p) {
+          return p.id;
+        });
+        return {
+          bounds: { w: alt.bounds.w, h: alt.bounds.h },
+          cardinalPull: alt.cardinalPull || 0,
+          edited: !!alt.edited,
+          score: alt.score,
+          placed: alt.placed.map(function (p) {
+            return { id: p.id, x: p.x, y: p.y, r: p.r };
+          }),
+          links: alt.links.map(function (l) {
+            return {
+              key: l.key,
+              a: ids[l.a],
+              b: ids[l.b],
+              aSid: l.aSid || null,
+              bSid: l.bSid || null,
+              pull: l.pull,
+              kind: l.kind,
+              proximity: l.proximity || null,
+              ideal: l.ideal,
+              weight: l.weight,
+            };
+          }),
+        };
+      }
+
+      function reviveSkeleton(raw) {
+        if (!raw || !Array.isArray(raw.placed)) return null;
+        var index = {};
+        raw.placed.forEach(function (p, i) {
+          index[p.id] = i;
+        });
+        var links = (raw.links || [])
+          .map(function (l) {
+            if (index[l.a] === undefined || index[l.b] === undefined) return null;
+            return {
+              key: l.key,
+              a: index[l.a],
+              b: index[l.b],
+              aSid: l.aSid,
+              bSid: l.bSid,
+              pull: l.pull,
+              kind: l.kind,
+              proximity: l.proximity,
+              ideal: l.ideal,
+              weight: l.weight,
+            };
+          })
+          .filter(Boolean);
+        return {
+          bounds: raw.bounds,
+          cardinalPull: raw.cardinalPull || 0,
+          edited: raw.edited,
+          score: raw.score,
+          placed: raw.placed.map(function (p) {
+            return { id: p.id, x: p.x, y: p.y, r: p.r };
+          }),
+          links: links,
+        };
+      }
+
       function snapshotCase() {
         return {
           saved: new Date().toISOString(),
@@ -5210,6 +5324,13 @@
           levels: JSON.parse(JSON.stringify(state.levels)),
           curves: JSON.parse(JSON.stringify(state.curves)),
           flow: JSON.parse(JSON.stringify(state.flow)),
+          skeletons: (state.skelHistory || []).map(function (entry) {
+            return {
+              label: entry.label,
+              rounds: entry.rounds.slice(),
+              alt: serializeSkeleton(entry.alt),
+            };
+          }),
         };
       }
 
@@ -5224,6 +5345,18 @@
         state.levels = JSON.parse(JSON.stringify(snap.levels || state.levels));
         state.curves = JSON.parse(JSON.stringify(snap.curves || state.curves));
         state.flow = migrateFlowKeys(JSON.parse(JSON.stringify(snap.flow || {})));
+        state.skelHistory = (snap.skeletons || [])
+          .map(function (entry) {
+            var alt = reviveSkeleton(entry.alt);
+            return alt
+              ? { label: entry.label, rounds: entry.rounds || [], alt: alt }
+              : null;
+          })
+          .filter(Boolean);
+        state.skelAlts = [];
+        state.skelPick = 0;
+        state.skelRounds = [];
+        saveSkeletons();
 
         /* The rows carry live cell references to a table that is about to be
            rebuilt, so they are dropped and rebuilt with it. */
@@ -5238,6 +5371,7 @@
         saveGeometry();
 
         document.getElementById("units").value = state.units;
+        renderSkeleton();
         paintUnits();
         buildLegend();
         buildCurveLegend();
@@ -5301,6 +5435,8 @@
         var store = readCases();
         if (store.current && store.cases[store.current]) {
           applyCase(store.cases[store.current]);
+        } else {
+          state.skelHistory = loadSkeletons();
         }
         renderCases();
         renderCompare();
@@ -7765,6 +7901,10 @@
                 trips: 0,
                 fromId: e.a.id,
                 toId: e.b.id,
+                /* The station each end sits on, which the skeleton needs to draw
+                   a flow as leaving one dock rather than the center at large. */
+                fromSid: sa.id,
+                toSid: sb.id,
                 from: stationAt(e.a, sa),
                 to: stationAt(e.b, sb),
               };
@@ -7865,6 +8005,7 @@
          ================================================================== */
 
       var SKEL_ROUND_WEIGHT = 1.6;
+      var CARD_STEP = Math.PI / 4;
 
       /* A small seeded generator, so the same request always draws the same
          alternatives and a skeleton the user liked can be reproduced. */
@@ -7910,7 +8051,7 @@
           if (a === undefined || b === undefined || a === b) return;
           if (seen[key]) {
             seen[key].weight += weight;
-            return;
+            return seen[key];
           }
           var link = {
             key: key,
@@ -7923,6 +8064,7 @@
           };
           seen[key] = link;
           links.push(link);
+          return link;
         }
 
         if (state.skelUseFlows) {
@@ -7932,9 +8074,25 @@
             var j = index[r.toId];
             if (i === undefined || j === undefined) return;
             /* A flow has no distance it prefers; it wants to be short, so its
-               ideal is nothing and the repulsion decides how close is possible. */
-            var key = "f:" + Math.min(i, j) + "-" + Math.max(i, j);
-            push(key, Math.min(i, j), Math.max(i, j), r.trips, 0, "flow");
+               ideal is nothing and the repulsion decides how close is possible.
+               Read station by station, each station pair is its own link, which is
+               what lets the drawing show which dock a flow leaves from. */
+            var lo = Math.min(i, j);
+            var hi = Math.max(i, j);
+            var loSid = lo === i ? r.fromSid : r.toSid;
+            var hiSid = lo === i ? r.toSid : r.fromSid;
+            var key =
+              "f:" +
+              lo +
+              (loSid ? "." + loSid : "") +
+              "-" +
+              hi +
+              (hiSid ? "." + hiSid : "");
+            var link = push(key, lo, hi, r.trips, 0, "flow");
+            if (link) {
+              link.aSid = loSid || null;
+              link.bSid = hiSid || null;
+            }
           });
         }
 
@@ -7997,7 +8155,7 @@
       }
 
       /* One relaxation from one starting arrangement. */
-      function relaxSkeleton(input, start, bounds, rounds) {
+      function relaxSkeleton(input, start, bounds, rounds, cardinalPull) {
         var n = input.nodes.length;
         var mode = state.skelNodeSize;
         var scale = mode === "equal" ? Math.min(bounds.w, bounds.h) / 18 : 1;
@@ -8027,6 +8185,8 @@
         var STEPS = 600;
         for (var step = 0; step < STEPS; step++) {
           var cool = 1 - step / STEPS;
+          var progress = step / STEPS;
+          var align = progress < 0.4 ? 0 : (progress - 0.4) / 0.6;
           var dx = new Array(n).fill(0);
           var dy = new Array(n).fill(0);
 
@@ -8045,6 +8205,25 @@
             dy[i] += uy;
             dx[j] -= ux;
             dy[j] -= uy;
+
+            /* "Clearly N, NE, E, SE, S, SW, W or NW of each other." The topology
+               has to settle before the angles are worth tidying, so this only
+               comes in over the second half of the run: it turns each link toward
+               the nearest eighth of a turn by sliding its two ends sideways, which
+               changes the direction between them without changing how far apart
+               they are. */
+            if (align > 0 && cardinalPull > 0) {
+              var ang = Math.atan2(vy, vx);
+              var nearest = Math.round(ang / CARD_STEP) * CARD_STEP;
+              var off = nearest - ang;
+              var rot = cardinalPull * align * pull * off * d;
+              var px = -vy / d;
+              var py = vx / d;
+              dx[i] -= px * rot;
+              dy[i] -= py * rot;
+              dx[j] += px * rot;
+              dy[j] += py * rot;
+            }
           });
 
           for (var i2 = 0; i2 < n; i2++) {
@@ -8200,9 +8379,17 @@
               return { x: rand() * bounds.w, y: rand() * bounds.h };
             });
           }
-          var placed = relaxSkeleton(input, start, bounds, rounds);
+          /* How hard the drawing is pushed onto the eight compass directions is
+             not a constant to guess at: squaring the angles costs some of the
+             separation the links asked for, and which trade is worth making is
+             the user's call. The alternatives therefore span the range, from one
+             that only satisfies its links to one laid out squarely, and the table
+             says which is which. */
+          var cardinalPull = count === 1 ? 0.18 : (0.36 * s) / (count - 1);
+          var placed = relaxSkeleton(input, start, bounds, rounds, cardinalPull);
           out.push({
             seed: s,
+            cardinalPull: cardinalPull,
             placed: placed,
             score: scoreSkeleton(input, placed, bounds),
             links: input.links,
@@ -8252,6 +8439,46 @@
           node.addEventListener("pointerup", done);
           node.addEventListener("pointercancel", done);
         });
+      }
+
+      /* Where each I/O station sits on its center's rim. A station has no position
+         of its own on a skeleton — the center does — so it is placed on the side
+         facing the centers it actually trades with, which is the information the
+         drawing is there to carry. */
+      function stationDots(alt) {
+        if (!state.skelStations) return {};
+        var at = {};
+        alt.placed.forEach(function (p) {
+          at[p.id] = p;
+        });
+        var aim = {};
+        alt.links.forEach(function (link) {
+          if (link.kind !== "flow" || !link.aSid || !link.bSid) return;
+          var a = alt.placed[link.a];
+          var b = alt.placed[link.b];
+          if (!a || !b) return;
+          function note(node, sid, other) {
+            var key = node.id + "." + sid;
+            if (!aim[key]) aim[key] = { node: node, x: 0, y: 0, n: 0 };
+            aim[key].x += other.x - node.x;
+            aim[key].y += other.y - node.y;
+            aim[key].n += link.pull || 0.001;
+          }
+          note(a, link.aSid, b);
+          note(b, link.bSid, a);
+        });
+
+        var dots = {};
+        Object.keys(aim).forEach(function (key) {
+          var entry = aim[key];
+          var len = Math.hypot(entry.x, entry.y) || 1;
+          dots[key] = {
+            x: entry.node.x + (entry.x / len) * entry.node.r,
+            y: entry.node.y + (entry.y / len) * entry.node.r,
+            sid: key.slice(key.indexOf(".") + 1),
+          };
+        });
+        return dots;
       }
 
       function drawSkeleton(alt, opts) {
@@ -8306,10 +8533,19 @@
           at[p.id] = p;
         });
 
+        var dots = stationDots(alt);
         alt.links.forEach(function (link) {
           var a = alt.placed[link.a];
           var b = alt.placed[link.b];
           if (!a || !b) return;
+          /* A flow is drawn between the docks it actually uses when those are
+             known; a relationship is between the centers themselves. */
+          var da = link.aSid && dots[a.id + "." + link.aSid];
+          var db = link.bSid && dots[b.id + "." + link.bSid];
+          var ax = da ? da.x : a.x;
+          var ay = da ? da.y : a.y;
+          var bx = db ? db.x : b.x;
+          var by = db ? db.y : b.y;
           var prox = link.proximity ? proximityOf(link.proximity) : null;
           var colour =
             link.kind === "flow"
@@ -8317,10 +8553,10 @@
               : (prox && prox.colour) || PAPER_MUTED;
           svg.appendChild(
             svgEl("line", {
-              x1: a.x,
-              y1: a.y,
-              x2: b.x,
-              y2: b.y,
+              x1: ax,
+              y1: ay,
+              x2: bx,
+              y2: by,
               stroke: colour,
               "stroke-width": (small ? 0.6 : 0.4) + link.pull * (small ? 1.6 : 2.4),
               "stroke-opacity": 0.75,
@@ -8343,6 +8579,23 @@
           });
           node.setAttribute("data-node", p.id);
           svg.appendChild(node);
+          Object.keys(dots).forEach(function (key) {
+            if (key.indexOf(p.id + ".") !== 0) return;
+            var dot = dots[key];
+            var mark = svgEl("circle", {
+              class: "skel-station",
+              cx: dot.x,
+              cy: dot.y,
+              r: Math.max(0.5, p.r * 0.16),
+              fill: "#ffffff",
+              stroke: PAPER_INK,
+              "stroke-width": small ? 0.8 : 1.2,
+              "vector-effect": "non-scaling-stroke",
+            });
+            mark.appendChild(svgEl("title", {}));
+            mark.firstChild.textContent = p.id + " " + dot.sid;
+            svg.appendChild(mark);
+          });
           if (!small) {
             var label = svgEl("text", {
               x: p.x,
@@ -8464,6 +8717,16 @@
             unit: "°",
           },
           {
+            /* A setting rather than a result, so it is never marked as best. */
+            label: "Squared up",
+            get: function (s, alt) {
+              return Math.round((alt.cardinalPull / 0.36) * 100);
+            },
+            fmt: 0,
+            unit: "%",
+            plain: true,
+          },
+          {
             label: "Overlap",
             get: function (s) {
               return s.overlap;
@@ -8497,9 +8760,13 @@
 
         var best = {};
         COLUMNS.forEach(function (col, ci) {
+          if (col.plain) {
+            best[ci] = null;
+            return;
+          }
           var pick = null;
           alts.forEach(function (alt) {
-            var v = col.get(alt.score);
+            var v = col.get(alt.score, alt);
             pick = pick === null ? v : Math.min(pick, v);
           });
           best[ci] = pick;
@@ -8515,10 +8782,11 @@
             }),
           );
           COLUMNS.forEach(function (col, ci) {
-            var v = col.get(alt.score);
+            var v = col.get(alt.score, alt);
+            var isBest = best[ci] !== null && Math.abs(v - best[ci]) < 1e-9;
             tr.appendChild(
               el("td", {
-                class: "total" + (Math.abs(v - best[ci]) < 1e-9 ? " bestcell" : ""),
+                class: "total" + (isBest ? " bestcell" : ""),
                 text: v.toFixed(col.fmt) + (col.unit || ""),
               }),
             );
@@ -9283,6 +9551,12 @@
       }
       skelCheckbox("skel-flows", "skelUseFlows");
       skelCheckbox("skel-rels", "skelUseRels");
+      document
+        .getElementById("skel-stations")
+        .addEventListener("change", function (ev) {
+          state.skelStations = ev.target.checked;
+          renderSkeleton();
+        });
 
       document
         .getElementById("skel-size")
@@ -9374,6 +9648,16 @@
             rounds: state.skelRounds.slice(),
           },
         ]);
+        saveSkeletons();
+        renderSkeleton();
+      });
+
+      document.getElementById("skel-forget").addEventListener("click", function () {
+        if (!state.skelHistory || !state.skelHistory.length) return;
+        if (!window.confirm("Forget every accepted skeleton for this case?"))
+          return;
+        state.skelHistory = [];
+        saveSkeletons();
         renderSkeleton();
       });
 
@@ -9679,7 +9963,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261003203454";
+      window.__BUILD__ = "20261003204147";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
