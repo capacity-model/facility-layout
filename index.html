@@ -1056,6 +1056,17 @@
         margin-top: 4px;
       }
 
+      td.toonarrow {
+        color: #b3261e;
+        font-weight: 600;
+      }
+
+      .gap-h3 {
+        margin: 18px 0 0;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+      }
+
       .skel-alts {
         display: flex;
         flex-wrap: wrap;
@@ -1797,6 +1808,20 @@
           </div>
 
           <div class="issues" id="geo-issues" hidden></div>
+
+          <h3 class="gap-h3">Aisle check</h3>
+          <p class="kinds-lede">
+            The clear space left between two centers that face each other, with
+            nothing standing in between &mdash; which is where an aisle would have
+            to go. A gap narrower than a single lane cannot carry traffic at all,
+            however much flow wants to cross it, so those are called out first. The
+            lane width used here is the one set on the Design skeleton tab, as is
+            the narrower walking lane for aisles that only people use.
+          </p>
+          <div class="scalewrap">
+            <table class="flowtable compare" id="gap-grid"></table>
+          </div>
+          <p class="note" id="gap-note"></p>
 
           <div class="kinds">
             <h3>Center types</h3>
@@ -2576,11 +2601,24 @@
                   id="lane-width"
                   class="f num"
                   type="number"
-                  min="1"
+                  min="0.5"
                   max="12"
                   step="0.5"
-                  value="3"
+                  value="2"
                   aria-label="lane width"
+                />
+              </label>
+              <label class="constraint-cell">
+                Walking lane
+                <input
+                  id="walk-width"
+                  class="f num"
+                  type="number"
+                  min="0.5"
+                  max="12"
+                  step="0.5"
+                  value="1"
+                  aria-label="walking lane width"
                 />
               </label>
               <label class="constraint-cell">
@@ -2970,7 +3008,8 @@
         blockPick: 0,
         blockCount: 4,
         blockMetric: "Rectilinear",
-        laneWidth: 3,
+        laneWidth: 2,
+        walkWidth: 1,
         laneCapacity: 600,
         biThreshold: 150,
         netAlts: [],
@@ -5049,6 +5088,158 @@
         flagOverlaps();
       }
 
+      /* Two centers face each other across a clear gap when they overlap on one
+         axis, are apart on the other, and nothing else stands in the space between
+         them. That space is where an aisle would have to run, so its width is the
+         first thing a drawn layout can be checked against: a gap narrower than one
+         lane carries no traffic at all, whatever the flows ask for. */
+      function facingGaps() {
+        var cs = state.centers;
+        var out = [];
+        for (var i = 0; i < cs.length; i++) {
+          for (var j = i + 1; j < cs.length; j++) {
+            var a = cs[i];
+            var b = cs[j];
+            var xOver = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+            var yOver = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+            var gap, along, runs, box;
+            if (xOver > 0 && yOver <= 0) {
+              /* One is above the other, so the aisle between them runs east-west. */
+              var top = a.y < b.y ? a : b;
+              var low = top === a ? b : a;
+              gap = low.y - (top.y + top.h);
+              along = xOver;
+              runs = "east–west";
+              box = {
+                x: Math.max(a.x, b.x),
+                y: top.y + top.h,
+                w: xOver,
+                h: gap,
+              };
+            } else if (yOver > 0 && xOver <= 0) {
+              var left = a.x < b.x ? a : b;
+              var right = left === a ? b : a;
+              gap = right.x - (left.x + left.w);
+              along = yOver;
+              runs = "north–south";
+              box = {
+                x: left.x + left.w,
+                y: Math.max(a.y, b.y),
+                w: gap,
+                h: yOver,
+              };
+            } else {
+              continue;
+            }
+            if (gap < 0) continue;
+            /* A third center standing in the gap means these two do not face each
+               other at all, and the space between them is not one aisle. */
+            var blocked = false;
+            cs.forEach(function (c) {
+              if (blocked || c === a || c === b) return;
+              var w = Math.min(c.x + c.w, box.x + box.w) - Math.max(c.x, box.x);
+              var h = Math.min(c.y + c.h, box.y + box.h) - Math.max(c.y, box.y);
+              if (w > 1e-9 && h > 1e-9) blocked = true;
+            });
+            if (blocked) continue;
+            out.push({ a: a.id, b: b.id, gap: gap, along: along, runs: runs });
+          }
+        }
+        out.sort(function (m, n) {
+          return m.gap - n.gap || m.a.localeCompare(n.a);
+        });
+        return out;
+      }
+
+      function renderGaps() {
+        var table = document.getElementById("gap-grid");
+        var note = document.getElementById("gap-note");
+        if (!table) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+
+        var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+        var walk = state.walkWidth > 0 ? state.walkWidth : 1;
+        var gaps = facingGaps();
+        if (!gaps.length) {
+          if (note)
+            note.textContent =
+              "No two centers face each other across open space, so there is no aisle to check.";
+          return;
+        }
+
+        var thead = el("thead");
+        var head = el("tr");
+        [
+          "Between",
+          "Aisle runs",
+          "Clear gap (" + unitLabel() + ")",
+          "Along (" + unitLabel() + ")",
+          "What fits",
+        ].forEach(function (label, i) {
+          head.appendChild(
+            el(i === 0 ? "th" : "th", {
+              class: i === 0 ? "corner" : "",
+              text: label,
+            }),
+          );
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var tight = 0;
+        var tbody = el("tbody");
+        gaps.forEach(function (g) {
+          var lanes = Math.floor(g.gap / lane + 1e-9);
+          /* Three outcomes, not two: a gap can carry vehicles, or only people, or
+             nothing at all. The middle one is a real aisle — the course drawing is
+             full of metre-wide gaps that exist so somebody can walk through. */
+          var fits =
+            lanes >= 1
+              ? lanes + (lanes === 1 ? " lane" : " lanes")
+              : g.gap >= walk - 1e-9
+                ? "walking only"
+                : "nothing";
+          var bad = lanes < 1 && g.gap < walk - 1e-9;
+          if (bad) tight++;
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: g.a + " – " + g.b }));
+          tr.appendChild(el("td", { class: "total", text: g.runs }));
+          tr.appendChild(
+            el("td", {
+              class: "total" + (bad ? " toonarrow" : ""),
+              text: inUnits(g.gap, 2),
+            }),
+          );
+          tr.appendChild(el("td", { class: "total", text: inUnits(g.along, 2) }));
+          tr.appendChild(
+            el("td", { class: "total" + (bad ? " toonarrow" : ""), text: fits }),
+          );
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        if (note) {
+          note.textContent =
+            gaps.length +
+            (gaps.length === 1 ? " gap" : " gaps") +
+            " measured against a lane of " +
+            inUnits(lane, 2) +
+            " " +
+            unitLabel() +
+            " and a walking lane of " +
+            inUnits(walk, 2) +
+            " " +
+            unitLabel() +
+            ". " +
+            (tight
+              ? tight +
+                (tight === 1
+                  ? " is too narrow even to walk through."
+                  : " are too narrow even to walk through.")
+              : "Every one of them takes at least a walking lane.");
+        }
+      }
+
       function flagOverlaps() {
         var problems = [];
         for (var i = 0; i < state.centers.length; i++) {
@@ -5079,6 +5270,7 @@
         } else {
           box.hidden = true;
         }
+        renderGaps();
       }
 
       /* One station's row inside a center's station cell: what it is called, which
@@ -11627,7 +11819,8 @@
           ev.target.value = String(state[key]);
         });
       }
-      netNumber("lane-width", "laneWidth", 1, 12);
+      netNumber("lane-width", "laneWidth", 0.5, 12);
+      netNumber("walk-width", "walkWidth", 0.5, 12);
       netNumber("lane-cap", "laneCapacity", 1, 100000);
       netNumber("lane-bi", "biThreshold", 0, 100000);
       netNumber("net-count", "netCount", 1, 6);
@@ -11971,7 +12164,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261004231225";
+      window.__BUILD__ = "20261004232154";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
