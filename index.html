@@ -4145,6 +4145,17 @@
             st.t = isNaN(t) ? 0.5 : Math.max(0, Math.min(1, t));
             return true;
           });
+          /* The filter just above can empty a list that passed the check at the
+             top of this loop — a saved center whose stations were all malformed.
+             A center with no station has nowhere for a flow to arrive and no
+             primary pair to bind, so it gets the default pair rather than
+             reaching the rest of the app half-built. */
+          if (!c.stations.length) {
+            c.stations = [
+              { id: "I", fn: "in", edge: "top", t: 0.5 },
+              { id: "O", fn: "out", edge: "bottom", t: 0.5 },
+            ];
+          }
           bindPrimaryStations(c);
           if (typeof c.note !== "string") c.note = "";
         });
@@ -5357,6 +5368,7 @@
             title: "Add an I/O station to " + c.id,
           });
           add.addEventListener("click", function () {
+            if (!Array.isArray(c.stations)) c.stations = [];
             c.stations.push({
               id: nextStationId(c),
               fn: "io",
@@ -6176,7 +6188,20 @@
       });
 
       document.getElementById("reset-geo").addEventListener("click", function () {
-        var fresh = cloneGeometry();
+        /* cloneGeometry hands back the shipped shape, where a center carries an I
+           and an O rather than a station list. Every other way geometry enters the
+           app goes through normalizeStations to become that list; this one has to
+           as well, or the restored centers arrive with no stations at all and the
+           first thing asked of them throws. The units, preset and types on screen
+           ride along so that restoring the centers does not quietly reset those
+           too. */
+        var fresh = normalizeStations({
+          building: cloneGeometry().building,
+          centers: cloneGeometry().centers,
+          units: state.units,
+          stationPreset: state.stationPreset,
+          kinds: kindList(),
+        });
         state.building = fresh.building;
         state.centers = fresh.centers;
         buildLayout();
@@ -11796,7 +11821,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261003210739";
+      window.__BUILD__ = "20261004182524";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
