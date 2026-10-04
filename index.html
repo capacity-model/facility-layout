@@ -1067,6 +1067,25 @@
         letter-spacing: 0.02em;
       }
 
+      .geo-view {
+        margin: 10px 0 0;
+      }
+
+      .aisle-key span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-right: 10px;
+        white-space: nowrap;
+      }
+
+      .aisle-key i {
+        width: 14px;
+        height: 10px;
+        border: 1px solid;
+        display: inline-block;
+      }
+
       .skel-alts {
         display: flex;
         flex-wrap: wrap;
@@ -1800,8 +1819,17 @@
             wall. Flows still travel between a center&rsquo;s first input and first
             output; routing them through a named station is the next step. Traced
             from the course drawing — the block positions reproduce the centroid
-            distances the course reports for B–D, B–C and C–D.
+            distances the course reports for B–D, B–C and C–D. The aisle check below
+            measures the space those blocks leave between them.
           </p>
+
+          <div class="constraints geo-view">
+            <span class="constraint-cell">
+              <input id="show-aisles" type="checkbox" checked />
+              Draw the aisles
+            </span>
+            <span class="constraint-cell aisle-key" id="aisle-key"></span>
+          </div>
 
           <div class="paper geo-paper">
             <div id="layout"></div>
@@ -2999,6 +3027,7 @@
         skelUseFlows: true,
         skelUseRels: true,
         skelNodeSize: "area",
+        showAisles: true,
         skelInflate: 25,
         skelShrink: 0,
         skelStations: true,
@@ -4935,6 +4964,10 @@
           }),
         );
 
+        /* Under the blocks, so a center still reads as solid over its aisles. */
+        if (state.showAisles) drawAisles(svg);
+        paintAisleKey();
+
         function toLocal(event) {
           var pt = svg.createSVGPoint();
           pt.x = event.clientX;
@@ -5142,7 +5175,14 @@
               if (w > 1e-9 && h > 1e-9) blocked = true;
             });
             if (blocked) continue;
-            out.push({ a: a.id, b: b.id, gap: gap, along: along, runs: runs });
+            out.push({
+              a: a.id,
+              b: b.id,
+              gap: gap,
+              along: along,
+              runs: runs,
+              box: box,
+            });
           }
         }
         out.sort(function (m, n) {
@@ -5238,6 +5278,191 @@
                   : " are too narrow even to walk through.")
               : "Every one of them takes at least a walking lane.");
         }
+      }
+
+      /* What the gaps look like, drawn where they are. Until now the aisles were
+         only the white space left over between the blocks; this puts them on the
+         page as the thing they are, banded by how much traffic each can take, with
+         the crossings marked where two of them meet. */
+      var AISLE_TIER = [
+        { fill: "#fdeceb", stroke: "#d9534f", name: "too narrow" },
+        { fill: "#eef1f5", stroke: "#9aa5b1", name: "walking" },
+        { fill: "#ddebfb", stroke: "#7fa8d6", name: "1 lane" },
+        { fill: "#c3dcf6", stroke: "#5b8cc0", name: "2 lanes" },
+        { fill: "#a7cbf0", stroke: "#3f73a8", name: "3+ lanes" },
+      ];
+
+      function aisleTier(gap) {
+        var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+        var walk = state.walkWidth > 0 ? state.walkWidth : 1;
+        var lanes = Math.floor(gap / lane + 1e-9);
+        if (lanes >= 3) return { i: 4, lanes: lanes, label: lanes + " lanes" };
+        if (lanes === 2) return { i: 3, lanes: 2, label: "2 lanes" };
+        if (lanes === 1) return { i: 2, lanes: 1, label: "1 lane" };
+        if (gap >= walk - 1e-9) return { i: 1, lanes: 0, label: "walk" };
+        return { i: 0, lanes: 0, label: "✕" };
+      }
+
+      /* A key for the bands, so the colours on the drawing mean something without
+         reading the table under it. */
+      function paintAisleKey() {
+        var host = document.getElementById("aisle-key");
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+        if (!state.showAisles) return;
+        AISLE_TIER.forEach(function (tier) {
+          var cell = el("span");
+          var swatch = el("i");
+          swatch.style.background = tier.fill;
+          swatch.style.borderColor = tier.stroke;
+          cell.appendChild(swatch);
+          cell.appendChild(document.createTextNode(tier.name));
+          host.appendChild(cell);
+        });
+      }
+
+      /* A gap is measured only where its two centers face each other, but the
+         corridor it belongs to runs on until something stands in the way. Running
+         each band out to where it is blocked is what turns a set of gaps into a
+         network, and is what makes the crossings appear. */
+      function freeStrip(x0, y0, x1, y1) {
+        var eps = 1e-6;
+        var cs = state.centers;
+        for (var i = 0; i < cs.length; i++) {
+          var c = cs[i];
+          if (
+            c.x < x1 - eps &&
+            c.x + c.w > x0 + eps &&
+            c.y < y1 - eps &&
+            c.y + c.h > y0 + eps
+          )
+            return false;
+        }
+        return true;
+      }
+
+      function runOut(box, vertical) {
+        var step = 0.25;
+        var B = state.building;
+        var x0 = box.x;
+        var x1 = box.x + box.w;
+        var y0 = box.y;
+        var y1 = box.y + box.h;
+        if (vertical) {
+          while (y0 - step >= 0 && freeStrip(x0, y0 - step, x1, y0)) y0 -= step;
+          while (y1 + step <= B.h && freeStrip(x0, y1, x1, y1 + step)) y1 += step;
+        } else {
+          while (x0 - step >= 0 && freeStrip(x0 - step, y0, x0, y1)) x0 -= step;
+          while (x1 + step <= B.w && freeStrip(x1, y0, x1 + step, y1)) x1 += step;
+        }
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+
+      function aisleBands() {
+        var seen = {};
+        var out = [];
+        facingGaps().forEach(function (g) {
+          var vertical = g.runs === "north–south";
+          var run = runOut(g.box, vertical);
+          /* Two different pairs of centers often name the same corridor. */
+          var key =
+            g.runs +
+            "|" +
+            run.x.toFixed(2) +
+            "," +
+            run.y.toFixed(2) +
+            "," +
+            run.w.toFixed(2) +
+            "," +
+            run.h.toFixed(2);
+          if (seen[key]) return;
+          seen[key] = true;
+          out.push({
+            gap: g.gap,
+            runs: g.runs,
+            at: g.box,
+            run: run,
+            a: g.a,
+            b: g.b,
+          });
+        });
+        return out;
+      }
+
+      function drawAisles(svg) {
+        var layer = svgEl("g", { class: "aisle-layer" });
+        var gaps = aisleBands();
+        var ns = [];
+        var ew = [];
+
+        gaps.forEach(function (g) {
+          var tier = AISLE_TIER[aisleTier(g.gap).i];
+          layer.appendChild(
+            svgEl("rect", {
+              x: g.run.x,
+              y: g.run.y,
+              width: g.run.w,
+              height: g.run.h,
+              fill: tier.fill,
+              stroke: tier.stroke,
+              "stroke-width": 0.8,
+              "stroke-dasharray": "2 1.5",
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
+          (g.runs === "north–south" ? ns : ew).push(g);
+        });
+
+        /* Where a north-south corridor crosses an east-west one there is a box the
+           traffic has to clear, not a stretch it can travel along. */
+        ns.forEach(function (a) {
+          ew.forEach(function (b) {
+            var x = Math.max(a.run.x, b.run.x);
+            var y = Math.max(a.run.y, b.run.y);
+            var w = Math.min(a.run.x + a.run.w, b.run.x + b.run.w) - x;
+            var h = Math.min(a.run.y + a.run.h, b.run.y + b.run.h) - y;
+            if (w <= 1e-9 || h <= 1e-9) return;
+            layer.appendChild(
+              svgEl("rect", {
+                class: "aisle-cross",
+                x: x,
+                y: y,
+                width: w,
+                height: h,
+                fill: "#8fb6e0",
+                "fill-opacity": 0.55,
+                stroke: "#3f73a8",
+                "stroke-width": 0.8,
+                "vector-effect": "non-scaling-stroke",
+              }),
+            );
+          });
+        });
+
+        /* The lane count sits along the corridor, turned to read with it. */
+        gaps.forEach(function (g) {
+          var t = aisleTier(g.gap);
+          var short = Math.min(g.at.w, g.at.h);
+          if (short < 0.9) return;
+          var cx = g.at.x + g.at.w / 2;
+          var cy = g.at.y + g.at.h / 2;
+          var size = Math.max(1, Math.min(short * 0.6, 1.8));
+          var text = svgEl("text", {
+            x: cx,
+            y: cy + size * 0.35,
+            fill: t.i === 0 ? "#b3261e" : "#33475b",
+            "font-size": size,
+            "font-weight": 600,
+            "text-anchor": "middle",
+            "pointer-events": "none",
+          });
+          if (g.runs === "north–south")
+            text.setAttribute("transform", "rotate(-90 " + cx + " " + cy + ")");
+          text.textContent = t.label;
+          layer.appendChild(text);
+        });
+
+        svg.appendChild(layer);
       }
 
       function flagOverlaps() {
@@ -6399,6 +6624,13 @@
         addCenter(null);
         refreshAll();
       });
+
+      document
+        .getElementById("show-aisles")
+        .addEventListener("change", function (ev) {
+          state.showAisles = ev.target.checked;
+          buildLayout();
+        });
 
       document.getElementById("reset-geo").addEventListener("click", function () {
         /* cloneGeometry hands back the shipped shape, where a center carries an I
@@ -12164,7 +12396,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261004232154";
+      window.__BUILD__ = "20261004234147";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
