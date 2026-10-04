@@ -5230,16 +5230,15 @@
         var tbody = el("tbody");
         gaps.forEach(function (g) {
           var lanes = Math.floor(g.gap / lane + 1e-9);
-          /* Three outcomes, not two: a gap can carry vehicles, or only people, or
-             nothing at all. The middle one is a real aisle — the course drawing is
-             full of metre-wide gaps that exist so somebody can walk through. */
+          /* Three outcomes: a gap takes lanes, or only lets people through, or is
+             too narrow even for that. */
+          var bad = lanes < 1 && g.gap < walk - 1e-9;
           var fits =
             lanes >= 1
               ? lanes + (lanes === 1 ? " lane" : " lanes")
-              : g.gap >= walk - 1e-9
-                ? "walking only"
-                : "nothing";
-          var bad = lanes < 1 && g.gap < walk - 1e-9;
+              : bad
+                ? "nothing"
+                : "walking only";
           if (bad) tight++;
           var tr = el("tr");
           tr.appendChild(el("td", { class: "rowhead", text: g.a + " – " + g.b }));
@@ -5286,21 +5285,21 @@
          the crossings marked where two of them meet. */
       var AISLE_TIER = [
         { fill: "#fdeceb", stroke: "#d9534f", name: "too narrow" },
-        { fill: "#eef1f5", stroke: "#9aa5b1", name: "walking" },
-        { fill: "#ddebfb", stroke: "#7fa8d6", name: "1 lane" },
-        { fill: "#c3dcf6", stroke: "#5b8cc0", name: "2 lanes" },
-        { fill: "#a7cbf0", stroke: "#3f73a8", name: "3+ lanes" },
+        { fill: "#f2f4f7", stroke: "#c3cbd4", name: "walking only" },
+        { fill: "#ddebfb", stroke: "#7fa8d6", name: "one lane" },
+        { fill: "#c3dcf6", stroke: "#5b8cc0", name: "two lanes" },
+        { fill: "#a7cbf0", stroke: "#3f73a8", name: "three or more" },
       ];
 
       function aisleTier(gap) {
         var lane = state.laneWidth > 0 ? state.laneWidth : 2;
         var walk = state.walkWidth > 0 ? state.walkWidth : 1;
         var lanes = Math.floor(gap / lane + 1e-9);
-        if (lanes >= 3) return { i: 4, lanes: lanes, label: lanes + " lanes" };
-        if (lanes === 2) return { i: 3, lanes: 2, label: "2 lanes" };
-        if (lanes === 1) return { i: 2, lanes: 1, label: "1 lane" };
-        if (gap >= walk - 1e-9) return { i: 1, lanes: 0, label: "walk" };
-        return { i: 0, lanes: 0, label: "✕" };
+        if (lanes >= 3) return { i: 4, lanes: lanes };
+        if (lanes === 2) return { i: 3, lanes: 2 };
+        if (lanes === 1) return { i: 2, lanes: 1 };
+        if (gap >= walk - 1e-9) return { i: 1, lanes: 0 };
+        return { i: 0, lanes: 0 };
       }
 
       /* A key for the bands, so the colours on the drawing mean something without
@@ -5414,7 +5413,8 @@
         });
 
         /* Where a north-south corridor crosses an east-west one there is a box the
-           traffic has to clear, not a stretch it can travel along. */
+           traffic has to clear, not a stretch it can travel along. Drawn last so it
+           covers the lane dividers running through it. */
         ns.forEach(function (a) {
           ew.forEach(function (b) {
             var x = Math.max(a.run.x, b.run.x);
@@ -5439,32 +5439,45 @@
           });
         });
 
-        /* The lane count sits along the corridor, turned to read with it. */
+        /* "Showing the lanes": a corridor two lanes wide is drawn as two lanes,
+           divided down the middle, rather than labelled with the number two. The
+           dividers stop at the crossings, because an intersection is a box to
+           clear, not a stretch to travel along. */
         gaps.forEach(function (g) {
           var t = aisleTier(g.gap);
-          var short = Math.min(g.at.w, g.at.h);
-          if (short < 0.9) return;
-          var cx = g.at.x + g.at.w / 2;
-          var cy = g.at.y + g.at.h / 2;
-          var size = Math.max(1, Math.min(short * 0.6, 1.8));
-          var text = svgEl("text", {
-            x: cx,
-            y: cy + size * 0.35,
-            fill: t.i === 0 ? "#b3261e" : "#33475b",
-            "font-size": size,
-            "font-weight": 600,
-            "text-anchor": "middle",
-            "pointer-events": "none",
-          });
-          if (g.runs === "north–south")
-            text.setAttribute("transform", "rotate(-90 " + cx + " " + cy + ")");
-          text.textContent = t.label;
-          layer.appendChild(text);
+          if (t.lanes < 2) return;
+          var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+          var vertical = g.runs === "north–south";
+          var span = vertical ? g.run.w : g.run.h;
+          var spare = (span - t.lanes * lane) / 2;
+          for (var k = 1; k < t.lanes; k++) {
+            var at = spare + k * lane;
+            layer.appendChild(
+              svgEl("line", {
+                class: "lane-divider",
+                x1: vertical ? g.run.x + at : g.run.x,
+                y1: vertical ? g.run.y : g.run.y + at,
+                x2: vertical ? g.run.x + at : g.run.x + g.run.w,
+                y2: vertical ? g.run.y + g.run.h : g.run.y + at,
+                stroke: "#4a6fa5",
+                "stroke-width": 1,
+                "stroke-dasharray": "3 3",
+                "stroke-opacity": 0.85,
+                "vector-effect": "non-scaling-stroke",
+              }),
+            );
+          }
         });
 
         svg.appendChild(layer);
+        return layer;
       }
 
+      var GEO_PAD = 4;
+
+      /* The same layout as the first section, drawn read-only so the proximity
+         section can carry the relationship lines without a second editable copy
+         of the geometry. Editing stays in one place. */
       function flagOverlaps() {
         var problems = [];
         for (var i = 0; i < state.centers.length; i++) {
@@ -12396,7 +12409,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261004234147";
+      window.__BUILD__ = "20261004235802";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
