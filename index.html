@@ -1051,6 +1051,11 @@
         font-weight: 700;
       }
 
+      #skel-scores-key .keyline {
+        display: block;
+        margin-top: 4px;
+      }
+
       .skel-alts {
         display: flex;
         flex-wrap: wrap;
@@ -2393,6 +2398,20 @@
                 </select>
               </label>
               <label class="constraint-cell">
+                Draw nodes
+                <input
+                  id="skel-shrink"
+                  class="f num"
+                  type="number"
+                  min="0"
+                  max="75"
+                  step="5"
+                  value="0"
+                  aria-label="shrink nodes for drawing, percent"
+                />
+                % smaller
+              </label>
+              <label class="constraint-cell">
                 Room
                 <input
                   id="skel-inflate"
@@ -2450,6 +2469,7 @@
 
           <div class="scalewrap">
             <table class="flowtable compare" id="skel-scores"></table>
+            <p class="note" id="skel-scores-key"></p>
           </div>
 
           <h3 class="skel-h3">Accepted skeletons</h3>
@@ -2942,6 +2962,7 @@
         skelUseRels: true,
         skelNodeSize: "area",
         skelInflate: 25,
+        skelShrink: 0,
         skelStations: true,
         blockGrossMode: "percent",
         blockGrossPct: 30,
@@ -8667,7 +8688,7 @@
       /* The layout editor's own dragging is wired to its coordinate space and to
          saving geometry, neither of which a skeleton wants, so it gets its own:
          the same pointer-capture dance against whichever svg it is drawn in. */
-      function dragInSvg(svg, node, onMove) {
+      function dragInSvg(svg, node, onMove, onEnd) {
         function toLocal(event) {
           if (!svg.createSVGPoint || !svg.getScreenCTM) return null;
           var pt = svg.createSVGPoint();
@@ -8689,6 +8710,7 @@
             node.removeEventListener("pointermove", moved);
             node.removeEventListener("pointerup", done);
             node.removeEventListener("pointercancel", done);
+            if (onEnd) onEnd();
           };
           node.addEventListener("pointermove", moved);
           node.addEventListener("pointerup", done);
@@ -8700,7 +8722,7 @@
          of its own on a skeleton — the center does — so it is placed on the side
          facing the centers it actually trades with, which is the information the
          drawing is there to carry. */
-      function stationDots(alt) {
+      function stationDots(alt, scale) {
         if (!state.skelStations) return {};
         var at = {};
         alt.placed.forEach(function (p) {
@@ -8727,18 +8749,31 @@
         Object.keys(aim).forEach(function (key) {
           var entry = aim[key];
           var len = Math.hypot(entry.x, entry.y) || 1;
+          /* The dot belongs on the rim the drawing shows, which is the true rim
+             only while the nodes are drawn at full size. */
+          var rim = entry.node.r * (scale || 1);
           dots[key] = {
-            x: entry.node.x + (entry.x / len) * entry.node.r,
-            y: entry.node.y + (entry.y / len) * entry.node.r,
+            x: entry.node.x + (entry.x / len) * rim,
+            y: entry.node.y + (entry.y / len) * rim,
             sid: key.slice(key.indexOf(".") + 1),
           };
         });
         return dots;
       }
 
+      /* A skeleton's nodes can be drawn smaller than they are, so that the links
+         between them come out from behind them. It is a lens and nothing more:
+         positions, scores, and every layout grown from the skeleton go on using
+         the true radius. */
+      function skelScale() {
+        var pct = Math.max(0, Math.min(75, state.skelShrink || 0));
+        return 1 - pct / 100;
+      }
+
       function drawSkeleton(alt, opts) {
         var small = opts && opts.small;
         var B = alt.bounds;
+        var scale = skelScale();
         var pad = Math.max(B.w, B.h) * 0.04;
         var svg = svgEl("svg", {
           viewBox:
@@ -8788,8 +8823,8 @@
           at[p.id] = p;
         });
 
-        var dots = stationDots(alt);
-        alt.links.forEach(function (link) {
+        var dots = stationDots(alt, scale);
+        alt.links.forEach(function (link, li) {
           var a = alt.placed[link.a];
           var b = alt.placed[link.b];
           if (!a || !b) return;
@@ -8808,6 +8843,7 @@
               : (prox && prox.colour) || PAPER_MUTED;
           svg.appendChild(
             svgEl("line", {
+              "data-link": li,
               x1: ax,
               y1: ay,
               x2: bx,
@@ -8826,7 +8862,7 @@
             class: "skel-node",
             cx: p.x,
             cy: p.y,
-            r: p.r,
+            r: p.r * scale,
             fill: c ? kindFill(c.kind) : "#eeeeee",
             stroke: PAPER_INK,
             "stroke-width": small ? 1 : 1.5,
@@ -8839,9 +8875,10 @@
             var dot = dots[key];
             var mark = svgEl("circle", {
               class: "skel-station",
+              "data-station": key,
               cx: dot.x,
               cy: dot.y,
-              r: Math.max(0.5, p.r * 0.16),
+              r: Math.max(0.5, p.r * scale * 0.16),
               fill: "#ffffff",
               stroke: PAPER_INK,
               "stroke-width": small ? 0.8 : 1.2,
@@ -8853,10 +8890,11 @@
           });
           if (!small) {
             var label = svgEl("text", {
+              "data-label": p.id,
               x: p.x,
               y: p.y + 0.8,
               fill: PAPER_INK,
-              "font-size": Math.max(1.4, Math.min(p.r * 0.7, 2.6)),
+              "font-size": Math.max(1.4, Math.min(p.r * scale * 0.7, 2.6)),
               "font-weight": 700,
               "text-anchor": "middle",
               "pointer-events": "none",
@@ -8866,6 +8904,71 @@
           }
         });
         return svg;
+      }
+
+      /* Dragging a node used to redraw the whole skeleton on every pointer move,
+         which replaced the very circle the pointer had captured — so a drag died
+         after its first few pixels and the node appeared stuck. The drawing is
+         now moved in place while the pointer is down, and rebuilt once on release. */
+      function syncSkeleton(svg, alt) {
+        var scale = skelScale();
+        var dots = stationDots(alt, scale);
+
+        [].slice
+          .call(svg.querySelectorAll("line[data-link]"))
+          .forEach(function (ln) {
+            var link = alt.links[parseInt(ln.getAttribute("data-link"), 10)];
+            if (!link) return;
+            var a = alt.placed[link.a];
+            var b = alt.placed[link.b];
+            if (!a || !b) return;
+            var da = link.aSid && dots[a.id + "." + link.aSid];
+            var db = link.bSid && dots[b.id + "." + link.bSid];
+            ln.setAttribute("x1", da ? da.x : a.x);
+            ln.setAttribute("y1", da ? da.y : a.y);
+            ln.setAttribute("x2", db ? db.x : b.x);
+            ln.setAttribute("y2", db ? db.y : b.y);
+          });
+
+        var at = {};
+        alt.placed.forEach(function (q) {
+          at[q.id] = q;
+        });
+
+        [].slice
+          .call(svg.querySelectorAll("circle[data-node]"))
+          .forEach(function (node) {
+            var q = at[node.getAttribute("data-node")];
+            if (!q) return;
+            node.setAttribute("cx", q.x);
+            node.setAttribute("cy", q.y);
+            node.setAttribute("r", q.r * scale);
+          });
+
+        [].slice
+          .call(svg.querySelectorAll("circle[data-station]"))
+          .forEach(function (mark) {
+            var key = mark.getAttribute("data-station");
+            var dot = dots[key];
+            var q = at[key.slice(0, key.indexOf("."))];
+            if (!dot || !q) return;
+            mark.setAttribute("cx", dot.x);
+            mark.setAttribute("cy", dot.y);
+            mark.setAttribute("r", Math.max(0.5, q.r * scale * 0.16));
+          });
+
+        [].slice
+          .call(svg.querySelectorAll("text[data-label]"))
+          .forEach(function (label) {
+            var q = at[label.getAttribute("data-label")];
+            if (!q) return;
+            label.setAttribute("x", q.x);
+            label.setAttribute("y", q.y + 0.8);
+            label.setAttribute(
+              "font-size",
+              Math.max(1.4, Math.min(q.r * scale * 0.7, 2.6)),
+            );
+          });
       }
 
       function skeletonAlternatives() {
@@ -8939,13 +9042,29 @@
             });
             if (!place) return;
             node.style.cursor = "move";
-            dragInSvg(svg, node, function (now) {
-              place.x = Math.max(place.r, Math.min(alt.bounds.w - place.r, now.x));
-              place.y = Math.max(place.r, Math.min(alt.bounds.h - place.r, now.y));
-              alt.score = scoreSkeleton(input, alt.placed, alt.bounds);
-              alt.edited = true;
-              renderSkeleton();
-            });
+            dragInSvg(
+              svg,
+              node,
+              function (now) {
+                /* Clamped by the node's true radius, never its drawn one: shrinking
+                   the nodes is a way of seeing, not a way of making room. */
+                place.x = Math.max(
+                  place.r,
+                  Math.min(alt.bounds.w - place.r, now.x),
+                );
+                place.y = Math.max(
+                  place.r,
+                  Math.min(alt.bounds.h - place.r, now.y),
+                );
+                alt.score = scoreSkeleton(input, alt.placed, alt.bounds);
+                alt.edited = true;
+                syncSkeleton(svg, alt);
+                renderSkeletonScores(skeletonAlternatives());
+              },
+              function () {
+                renderSkeleton();
+              },
+            );
           });
       }
 
@@ -8958,6 +9077,7 @@
         var COLUMNS = [
           {
             label: "Link error",
+            hint: "how far each pair sits from the separation its link asks for, in metres, weighted by how much the link matters. Lower is closer to what the relationships and flows wanted.",
             get: function (s) {
               return s.linkError;
             },
@@ -8965,6 +9085,7 @@
           },
           {
             label: "Off cardinal",
+            hint: "the average angle a link lies away from the nearest eighth of a turn — N, NE, E, SE, S, SW, W, NW. 0° would mean every pair sits cleanly in one of those eight directions from the other.",
             get: function (s) {
               return s.cardinal;
             },
@@ -8974,6 +9095,7 @@
           {
             /* A setting rather than a result, so it is never marked as best. */
             label: "Squared up",
+            hint: "a setting, not a result: how hard this alternative was pulled toward those eight directions. Squaring a drawing up costs link error, so the alternatives are spread across the range rather than all pulled the same way.",
             get: function (s, alt) {
               return Math.round((alt.cardinalPull / 0.36) * 100);
             },
@@ -8983,6 +9105,7 @@
           },
           {
             label: "Overlap",
+            hint: "how far the nodes push into one another, in metres. 0 means no two centers claim the same ground.",
             get: function (s) {
               return s.overlap;
             },
@@ -8990,6 +9113,7 @@
           },
           {
             label: "Outside",
+            hint: "how far nodes reach past the room the skeleton is given, in metres. 0 means everything stayed inside it.",
             get: function (s) {
               return s.outside;
             },
@@ -8997,6 +9121,7 @@
           },
           {
             label: "Total",
+            hint: "the four measures above rolled into one: link error, plus a sixth of the cardinal angle, plus overlap and outside counted four times over, because a drawing that overlaps or overflows is not a drawing at all.",
             get: function (s) {
               return s.total;
             },
@@ -9008,7 +9133,9 @@
         var head = el("tr");
         head.appendChild(el("th", { class: "corner", text: "Alternative" }));
         COLUMNS.forEach(function (col) {
-          head.appendChild(el("th", { text: col.label }));
+          var th = el("th", { text: col.label });
+          if (col.hint) th.setAttribute("title", col.label + ": " + col.hint);
+          head.appendChild(th);
         });
         thead.appendChild(head);
         table.appendChild(thead);
@@ -9049,6 +9176,19 @@
           tbody.appendChild(tr);
         });
         table.appendChild(tbody);
+
+        /* The column names on their own did not say what they measured, so they
+           say it here as well as in the hover text. */
+        var key = document.getElementById("skel-scores-key");
+        if (key) {
+          while (key.firstChild) key.removeChild(key.firstChild);
+          COLUMNS.forEach(function (col) {
+            var line = el("span", { class: "keyline" });
+            line.appendChild(el("strong", { text: col.label }));
+            line.appendChild(document.createTextNode(" — " + col.hint));
+            key.appendChild(line);
+          });
+        }
       }
 
       function renderSkeletonHistory() {
@@ -11263,6 +11403,16 @@
         });
 
       document
+        .getElementById("skel-shrink")
+        .addEventListener("change", function (ev) {
+          var v = parseFloat(ev.target.value);
+          state.skelShrink = isNaN(v) ? 0 : Math.max(0, Math.min(75, v));
+          ev.target.value = String(state.skelShrink);
+          /* Only the drawing changes, so nothing is generated or scored again. */
+          renderSkeleton();
+        });
+
+      document
         .getElementById("skel-inflate")
         .addEventListener("change", function (ev) {
           var v = parseFloat(ev.target.value);
@@ -11821,7 +11971,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261004182524";
+      window.__BUILD__ = "20261004231225";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
