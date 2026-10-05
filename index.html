@@ -1086,6 +1086,18 @@
         display: inline-block;
       }
 
+      .aisle-key i.lanerule {
+        height: 0;
+        border: 0;
+        border-top: 1px dashed #4a6fa5;
+        width: 18px;
+      }
+
+      .aisle-key i.crossbox {
+        background: #dce9f7;
+        border-color: #5b8cc0;
+      }
+
       .skel-alts {
         display: flex;
         flex-wrap: wrap;
@@ -5309,15 +5321,27 @@
         if (!host) return;
         while (host.firstChild) host.removeChild(host.firstChild);
         if (!state.showAisles) return;
-        AISLE_TIER.forEach(function (tier) {
-          var cell = el("span");
-          var swatch = el("i");
-          swatch.style.background = tier.fill;
-          swatch.style.borderColor = tier.stroke;
-          cell.appendChild(swatch);
-          cell.appendChild(document.createTextNode(tier.name));
-          host.appendChild(cell);
-        });
+        /* The lines carry the meaning now, so the key says what a line is rather
+           than listing five shades of blue. */
+        var dash = el("span");
+        var rule = el("i", { class: "lanerule" });
+        dash.appendChild(rule);
+        dash.appendChild(document.createTextNode("one lane"));
+        host.appendChild(dash);
+
+        var cross = el("span");
+        var box = el("i", { class: "crossbox" });
+        cross.appendChild(box);
+        cross.appendChild(document.createTextNode("intersection"));
+        host.appendChild(cross);
+
+        var tight = el("span");
+        var red = el("i");
+        red.style.background = AISLE_TIER[0].fill;
+        red.style.borderColor = AISLE_TIER[0].stroke;
+        tight.appendChild(red);
+        tight.appendChild(document.createTextNode("too narrow for one"));
+        host.appendChild(tight);
       }
 
       /* A gap is measured only where its two centers face each other, but the
@@ -5402,10 +5426,9 @@
               y: g.run.y,
               width: g.run.w,
               height: g.run.h,
-              fill: tier.fill,
-              stroke: tier.stroke,
-              "stroke-width": 0.8,
-              "stroke-dasharray": "2 1.5",
+              fill: tier.i === 0 ? tier.fill : "none",
+              stroke: tier.i === 0 ? tier.stroke : "none",
+              "stroke-width": 1,
               "vector-effect": "non-scaling-stroke",
             }),
           );
@@ -5429,10 +5452,10 @@
                 y: y,
                 width: w,
                 height: h,
-                fill: "#8fb6e0",
-                "fill-opacity": 0.55,
-                stroke: "#3f73a8",
-                "stroke-width": 0.8,
+                fill: "#dce9f7",
+                "fill-opacity": 0.7,
+                stroke: "#5b8cc0",
+                "stroke-width": 1,
                 "vector-effect": "non-scaling-stroke",
               }),
             );
@@ -5445,17 +5468,18 @@
            clear, not a stretch to travel along. */
         gaps.forEach(function (g) {
           var t = aisleTier(g.gap);
-          if (t.lanes < 2) return;
+          if (t.lanes < 1) return;
           var vertical = g.runs === "north–south";
           var span = vertical ? g.run.w : g.run.h;
           /* "Two lanes, but the lanes are wider. And that's by design." How many
              lanes an aisle has is set by the traffic it must take; how wide each
              one is follows from the aisle it has to fit. So the lanes divide the
-             whole width between them rather than sitting a standard width apart
-             with the remainder left over at the edges. */
+             whole width between them, and each gets a line down its middle — an
+             aisle shows how many lanes it has the way a road does, by having
+             them, rather than by being coloured in or labelled with a number. */
           var each = span / t.lanes;
-          for (var k = 1; k < t.lanes; k++) {
-            var at = k * each;
+          for (var k = 0; k < t.lanes; k++) {
+            var at = (k + 0.5) * each;
             layer.appendChild(
               svgEl("line", {
                 class: "lane-divider",
@@ -12440,7 +12464,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005001504";
+      window.__BUILD__ = "20261005002516";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
