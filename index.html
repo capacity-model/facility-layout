@@ -2566,6 +2566,7 @@
 
           <div class="scalewrap">
             <table class="flowtable compare" id="skel-scores"></table>
+            <p class="note" id="skel-diffs"></p>
             <p class="note" id="skel-scores-key"></p>
           </div>
 
@@ -9822,6 +9823,42 @@
           });
       }
 
+      /* "Highlighting their structural / topological differences." Two drawings of
+         the same set of links differ structurally when they disagree about which
+         side of which a pair of centers sits, which is the same reading the block
+         layouts are checked against. */
+      function relationMap(alt) {
+        var map = {};
+        skeletonRelations(alt).forEach(function (r) {
+          map[r.a + "|" + r.b] = r;
+        });
+        return map;
+      }
+
+      /* Read the same way the block layouts are checked: a left-right fact differs
+         when the sides swap, an above-below fact when they swap, and a diagonal —
+         "fuzzy, it's either-or" — only when both do. A drawing turned a few
+         degrees is not a different arrangement. */
+      function differencesFrom(base, alt) {
+        var mine = relationMap(alt);
+        var out = [];
+        Object.keys(base).forEach(function (k) {
+          var r = base[k];
+          var m = mine[k];
+          if (!m) return;
+          var across = m.dx * r.dx < 0;
+          var down = m.dy * r.dy < 0;
+          var flipped =
+            r.kind === "across"
+              ? across
+              : r.kind === "down"
+                ? down
+                : across && down;
+          if (flipped) out.push(k.replace("|", "–"));
+        });
+        return out;
+      }
+
       function renderSkeletonScores(alts) {
         var table = document.getElementById("skel-scores");
         if (!table) return;
@@ -9874,6 +9911,15 @@
             fmt: 2,
           },
           {
+            label: "Differs",
+            hint: "how many pairs of centers this drawing puts on different sides of one another than the drawing on screen does. 0 means the two are the same arrangement, however different they look.",
+            get: function (s, alt) {
+              return alt.differs || 0;
+            },
+            fmt: 0,
+            plain: true,
+          },
+          {
             label: "Total",
             hint: "the four measures above rolled into one: link error, plus a sixth of the cardinal angle, plus overlap and outside counted four times over, because a drawing that overlaps or overflows is not a drawing at all.",
             get: function (s) {
@@ -9882,6 +9928,15 @@
             fmt: 1,
           },
         ];
+
+        /* Measured against the one on screen, so picking a different alternative
+           re-reads the others against it. */
+        var picked = alts[Math.min(state.skelPick, alts.length - 1)];
+        var base = relationMap(picked);
+        alts.forEach(function (alt) {
+          alt.diffList = alt === picked ? [] : differencesFrom(base, alt);
+          alt.differs = alt.diffList.length;
+        });
 
         var thead = el("thead");
         var head = el("tr");
@@ -9930,6 +9985,23 @@
           tbody.appendChild(tr);
         });
         table.appendChild(tbody);
+
+        var diff = document.getElementById("skel-diffs");
+        if (diff) {
+          var lines = [];
+          alts.forEach(function (alt, i) {
+            if (alt === picked || !alt.diffList.length) return;
+            var names = alt.diffList.slice(0, 6).join(", ");
+            if (alt.diffList.length > 6)
+              names += " and " + (alt.diffList.length - 6) + " more";
+            lines.push("#" + (i + 1) + " turns " + names + " around");
+          });
+          diff.textContent = lines.length
+            ? "Against the one on screen: " + lines.join("; ") + "."
+            : alts.length > 1
+              ? "The alternatives put every pair of centers on the same sides of one another; they differ only in spacing and angle."
+              : "";
+        }
 
         /* The column names on their own did not say what they measured, so they
            say it here as well as in the hover text. */
@@ -13297,7 +13369,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005014416";
+      window.__BUILD__ = "20261005015122";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
