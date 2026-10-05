@@ -2392,6 +2392,19 @@
             <h2 data-unit="Distance matrix">Distance matrix</h2>
             <div class="geo-tools">
               <label class="constraint-cell">
+                Max length-to-width
+                <input
+                  id="block-ratio"
+                  class="f num"
+                  type="number"
+                  min="1"
+                  max="12"
+                  step="0.5"
+                  value="3"
+                  aria-label="maximum length to width ratio"
+                />
+              </label>
+              <label class="constraint-cell">
                 Metric
                 <select id="dist-metric"></select>
               </label>
@@ -3107,6 +3120,7 @@
         blockPick: 0,
         blockCount: 4,
         blockMetric: "Rectilinear",
+        blockMaxRatio: 3,
         laneWidth: 2,
         walkWidth: 1,
         laneCapacity: 600,
@@ -9824,6 +9838,14 @@
       /* Areas that simply will not fit are not forced: the attempt is repeated at
          a smaller gross size until it does, and the layout reports the size it
          actually achieved rather than the one that was asked for. */
+      /* "I would prefer the designs — at least SOME of them — to try to avoid
+         going so far away from the length-to-width ratios that are put forward."
+         Holding every alternative to the maximum takes away the packer's cheapest
+         way out of a collision, so some alternatives keep the shapes and some are
+         allowed to stray; the table says which did which, and they can be
+         contrasted. */
+      var strictShape = false;
+
       function blockCandidate(alt, inflate) {
         var attempt = null;
         var factor = 1;
@@ -9929,10 +9951,26 @@
               var area = blk.w * blk.h;
               var ratio = blk.w / blk.h;
               var lean = blk.pressX > blk.pressY ? 0.94 : 1.06;
-              var next = Math.max(
-                blk.baseRatio * 0.4,
-                Math.min(blk.baseRatio * 2.5, ratio * lean),
-              );
+              /* The window used to be relative to the shape the center already
+                 has, so a center specified at nearly five to one could be stretched
+                 past ten. The specification gives a maximum length-to-width, and
+                 that is what bounds it — a center already beyond its own maximum
+                 may keep the shape it was given, but reshaping never makes it
+                 worse than that. */
+              var next;
+              if (strictShape) {
+                var cap = Math.max(
+                  state.blockMaxRatio || 3,
+                  blk.baseRatio,
+                  1 / blk.baseRatio,
+                );
+                next = Math.max(1 / cap, Math.min(cap, ratio * lean));
+              } else {
+                next = Math.max(
+                  blk.baseRatio * 0.4,
+                  Math.min(blk.baseRatio * 2.5, ratio * lean),
+                );
+              }
               var w = Math.sqrt(area * next);
               var h = area / w;
               if (w <= B.w && h <= B.h) {
@@ -10084,9 +10122,17 @@
            layout scores better on travel and leaves less space to route it. */
         for (var i = 0; i < count; i++) {
           var inflate = 1 + (0.45 * i) / Math.max(1, count - 1);
+          strictShape = i % 2 === 0;
           var cand = blockCandidate(alt, inflate);
+          strictShape = false;
           if (!cand.centers.length) continue;
+          cand.keptShapes = i % 2 === 0;
           placeBlockStations(cand, alt);
+          /* "Let's make sure, because now B, G and J are very lengthy." */
+          cand.worstRatio = cand.centers.reduce(function (m, c) {
+            var r = c.h > 0 ? c.w / c.h : 1;
+            return Math.max(m, r, 1 / r);
+          }, 1);
           cand.score = measureCandidate(cand);
           cand.label = Math.round((cand.scale - 1) * 100) + "% gross";
           out.push(cand);
@@ -10125,22 +10171,55 @@
         return out;
       }
 
+      /* "If it means getting out of the original building, then be it. We should
+         show in dotted line where the original building would be." */
+      function outsideReach(cand) {
+        var B = state.building;
+        var out = { x0: 0, y0: 0, x1: B.w, y1: B.h, any: false };
+        cand.centers.forEach(function (c) {
+          if (c.x < out.x0) {
+            out.x0 = c.x;
+            out.any = true;
+          }
+          if (c.y < out.y0) {
+            out.y0 = c.y;
+            out.any = true;
+          }
+          if (c.x + c.w > out.x1) {
+            out.x1 = c.x + c.w;
+            out.any = true;
+          }
+          if (c.y + c.h > out.y1) {
+            out.y1 = c.y + c.h;
+            out.any = true;
+          }
+        });
+        return out;
+      }
+
       function drawBlockLayout(cand, opts) {
         var small = opts && opts.small;
         var B = state.building;
         var pad = Math.max(B.w, B.h) * 0.04;
+        /* Respecting the shapes can push a block past the walls. That is allowed:
+           the drawing widens to show it, and the building it overran is left on
+           the page as a dotted outline. */
+        var reach = outsideReach(cand);
+        var vx = reach.x0 - pad;
+        var vy = reach.y0 - pad;
+        var vw = reach.x1 - reach.x0 + pad * 2;
+        var vh = reach.y1 - reach.y0 + pad * 2;
         var svg = svgEl("svg", {
-          viewBox:
-            -pad + " " + -pad + " " + (B.w + pad * 2) + " " + (B.h + pad * 2),
+          viewBox: vx + " " + vy + " " + vw + " " + vh,
           role: "img",
           "aria-label": "Block layout generated from the design skeleton",
         });
         svg.appendChild(
           svgEl("rect", {
-            x: -pad,
-            y: -pad,
-            width: B.w + pad * 2,
-            height: B.h + pad * 2,
+            x: vx,
+            y: vy,
+            width: vw,
+            height: vh,
             fill: PAPER_BG,
           }),
         );
@@ -10153,6 +10232,7 @@
             fill: "#ffffff",
             stroke: PAPER_INK,
             "stroke-width": small ? 1 : 2,
+            "stroke-dasharray": reach.any ? "4 3" : "none",
             "vector-effect": "non-scaling-stroke",
           }),
         );
@@ -10292,6 +10372,24 @@
             best: "low",
           },
           {
+            /* The shape specification, and how far the worst block strayed from it.
+               Marked against the maximum asked for, not against the other
+               alternatives, because it is a requirement rather than a contest. */
+            label: "Worst L/W",
+            get: function (c) {
+              return c.worstRatio || 1;
+            },
+            fmt: 2,
+            plain: true,
+          },
+          {
+            label: "Shapes",
+            text: function (c) {
+              return c.keptShapes ? "kept" : "free";
+            },
+            plain: true,
+          },
+          {
             label: "Drift",
             get: function (c) {
               return c.drift;
@@ -10312,7 +10410,7 @@
 
         var best = {};
         COLUMNS.forEach(function (col, ci) {
-          if (!col.best) {
+          if (!col.best || col.text) {
             best[ci] = null;
             return;
           }
@@ -10330,6 +10428,11 @@
           var tr = el("tr", { class: i === state.blockPick ? "live" : "" });
           tr.appendChild(el("td", { class: "rowhead", text: "#" + (i + 1) }));
           COLUMNS.forEach(function (col, ci) {
+            /* A column can report a word rather than a number. */
+            if (col.text) {
+              tr.appendChild(el("td", { class: "total", text: col.text(cand) }));
+              return;
+            }
             var v = col.get(cand);
             var isBest = best[ci] !== null && Math.abs(v - best[ci]) < 1e-9;
             tr.appendChild(
@@ -12394,6 +12497,14 @@
       }
 
       document
+        .getElementById("block-ratio")
+        .addEventListener("change", function (ev) {
+          var v = parseFloat(ev.target.value);
+          state.blockMaxRatio = isNaN(v) ? 3 : Math.max(1, Math.min(12, v));
+          ev.target.value = String(state.blockMaxRatio);
+        });
+
+      document
         .getElementById("block-generate")
         .addEventListener("click", function () {
           var alt = currentSkeleton();
@@ -12817,7 +12928,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005010128";
+      window.__BUILD__ = "20261005010843";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
