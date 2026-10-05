@@ -9161,6 +9161,9 @@
           }
 
           for (var k = 0; k < n; k++) {
+            /* A pinned node is where the designer put it; the forces act on
+               everything else around it. */
+            if (input.pinned && input.pinned[k]) continue;
             x[k] += dx[k] * cool;
             y[k] += dy[k] * cool;
             x[k] = Math.max(radii[k], Math.min(bounds.w - radii[k], x[k]));
@@ -9192,15 +9195,26 @@
               }
               var over = need - sd;
               if (over > worst) worst = over;
-              var mx = (sx / sd) * over * 0.5;
-              var my = (sy / sd) * over * 0.5;
-              x[a] -= mx;
-              y[a] -= my;
-              x[b] += mx;
-              y[b] += my;
+              /* A pinned node holds its ground, so the other one gives way for
+                 both of them. */
+              var pinA = input.pinned && input.pinned[a];
+              var pinB = input.pinned && input.pinned[b];
+              var shareA = pinA ? 0 : pinB ? 1 : 0.5;
+              var shareB = pinB ? 0 : pinA ? 1 : 0.5;
+              var mx = (sx / sd) * over;
+              var my = (sy / sd) * over;
+              x[a] -= mx * shareA;
+              y[a] -= my * shareA;
+              x[b] += mx * shareB;
+              y[b] += my * shareB;
             }
           }
           for (var c = 0; c < n; c++) {
+            if (input.pinned && input.pinned[c]) {
+              x[c] = start[c].x;
+              y[c] = start[c].y;
+              continue;
+            }
             x[c] = Math.max(radii[c], Math.min(bounds.w - radii[c], x[c]));
             y[c] = Math.max(radii[c], Math.min(bounds.h - radii[c], y[c]));
           }
@@ -9290,9 +9304,18 @@
         };
       }
 
-      function generateSkeletons(count, startFrom, rounds) {
+      /* "The refining is kind of automatic, it does it on its own, but there could
+         be some guidance… the designer should move PF more to the left and make
+         space." A node the designer has moved is a node they meant: it is pinned,
+         and refining works around it instead of pulling it back. */
+      function generateSkeletons(count, startFrom, rounds, pinned) {
         var input = skeletonInput();
         var bounds = skeletonBounds();
+        input.pinned = {};
+        if (pinned)
+          input.nodes.forEach(function (node, i) {
+            if (pinned[node.id]) input.pinned[i] = true;
+          });
         var out = [];
         for (var s = 0; s < count; s++) {
           var rand = seededRandom(1000 + s * 7919);
@@ -9308,6 +9331,9 @@
             start = input.nodes.map(function (node) {
               var was = startFrom[node.id];
               if (!was) return { x: rand() * bounds.w, y: rand() * bounds.h };
+              /* A pinned node is not jittered either: it starts, and stays, where
+                 it was put. */
+              if (pinned && pinned[node.id]) return { x: was.x, y: was.y };
               return {
                 x: was.x + (rand() - 0.5) * 2 * jitter,
                 y: was.y + (rand() - 0.5) * 2 * jitter,
@@ -9532,6 +9558,13 @@
             "vector-effect": "non-scaling-stroke",
           });
           node.setAttribute("data-node", p.id);
+          if (alt.pinned && alt.pinned[p.id]) {
+            node.setAttribute("stroke-width", small ? 2 : 3);
+            node.setAttribute("stroke", "#0c5c9e");
+            var held = svgEl("title", {});
+            held.textContent = p.id + " is pinned — double-click to release it";
+            node.appendChild(held);
+          }
           svg.appendChild(node);
           Object.keys(dots).forEach(function (key) {
             if (key.indexOf(p.id + ".") !== 0) return;
@@ -9705,6 +9738,15 @@
             });
             if (!place) return;
             node.style.cursor = "move";
+            node.addEventListener("dblclick", function (ev) {
+              ev.preventDefault();
+              if (alt.pinned && alt.pinned[id]) delete alt.pinned[id];
+              else {
+                alt.pinned = alt.pinned || {};
+                alt.pinned[id] = true;
+              }
+              renderSkeleton();
+            });
             dragInSvg(
               svg,
               node,
@@ -9721,6 +9763,10 @@
                 );
                 alt.score = scoreSkeleton(input, alt.placed, alt.bounds);
                 alt.edited = true;
+                /* Moving a node is the designer saying where it belongs, so it is
+                   pinned from then on and refining works around it. */
+                alt.pinned = alt.pinned || {};
+                alt.pinned[id] = true;
                 syncSkeleton(svg, alt);
                 renderSkeletonScores(skeletonAlternatives());
               },
@@ -9888,6 +9934,7 @@
           links: alt.links,
           score: alt.score,
           edited: alt.edited,
+          pinned: alt.pinned ? JSON.parse(JSON.stringify(alt.pinned)) : undefined,
           placed: alt.placed.map(function (p) {
             return { id: p.id, x: p.x, y: p.y, r: p.r };
           }),
@@ -12466,12 +12513,12 @@
       document.getElementById("skel-refine").addEventListener("click", function () {
         var alts = skeletonAlternatives();
         if (!alts.length) return;
+        var current = alts[Math.min(state.skelPick, alts.length - 1)];
         var from = {};
-        alts[Math.min(state.skelPick, alts.length - 1)].placed.forEach(
-          function (p) {
-            from[p.id] = { x: p.x, y: p.y };
-          },
-        );
+        current.placed.forEach(function (p) {
+          from[p.id] = { x: p.x, y: p.y };
+        });
+        var held = current.pinned || {};
         /* Links the arrangement has already been built on keep their standing;
            anything new joins the latest round and pulls more gently. */
         var input = skeletonInput();
@@ -12493,7 +12540,12 @@
           state.skelAlternatives,
           from,
           state.skelRounds,
+          held,
         );
+        /* The guidance carries into every alternative refined from it. */
+        state.skelAlts.forEach(function (a) {
+          a.pinned = JSON.parse(JSON.stringify(held));
+        });
         state.skelPick = 0;
         renderSkeleton();
       });
@@ -13013,7 +13065,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005011614";
+      window.__BUILD__ = "20261005012149";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
