@@ -3938,8 +3938,8 @@
           id: "C",
           x: 8.5,
           y: 8.5,
-          w: 17,
-          h: 13.5,
+          w: 16,
+          h: 12.5,
           kind: "process",
           I: { edge: "top", t: 0.088235 },
           O: { edge: "top", t: 0.352941 },
@@ -9968,8 +9968,35 @@
           cand.label = Math.round((cand.scale - 1) * 100) + "% gross";
           out.push(cand);
         }
+        /* The gross margin is not a preference, it is the space the aisles will
+           need: a layout that spent it scores better here and then has nowhere to
+           put an aisle at the net stage. So the alternatives that kept back what
+           was asked for come first, and only then does the score decide. The
+           tighter ones stay on the list — they are a real choice — but they are
+           not what everything downstream starts from. */
+        var netTotal = 0;
+        state.centers.forEach(function (c) {
+          netTotal += c.w * c.h;
+        });
+        var asked = grossScale(
+          netTotal,
+          state.building.w * state.building.h,
+          state.blockGrossMode,
+          state.blockGrossPct,
+        );
+        out.forEach(function (cand) {
+          cand.shortfall = Math.max(0, asked - cand.scale);
+        });
+        /* "Fits" is the same tolerance the packing itself uses, so a couple of
+           centimetres of touching does not outrank a layout that kept the whole
+           aisle margin back. */
+        function fits(cand) {
+          return cand.overlap < 0.05 ? 0 : cand.overlap;
+        }
         out.sort(function (a, b) {
-          if (Math.abs(a.overlap - b.overlap) > 0.01) return a.overlap - b.overlap;
+          if (Math.abs(fits(a) - fits(b)) > 1e-9) return fits(a) - fits(b);
+          if (Math.abs(a.shortfall - b.shortfall) > 0.005)
+            return a.shortfall - b.shortfall;
           return b.score.score - a.score.score;
         });
         return out;
@@ -10076,9 +10103,9 @@
         var chosen = alts[Math.min(state.blockPick, alts.length - 1)];
         canvas.appendChild(drawBlockLayout(chosen, {}));
         note.textContent =
-          chosen.overlap > 0.01
+          chosen.overlap >= 0.05
             ? "This one cannot fit without overlap: " +
-              chosen.overlap.toFixed(1) +
+              chosen.overlap.toFixed(2) +
               " m of it. Lower the margin, or give the centers less area."
             : "Fits with no overlap. Accept puts it on the Layout page.";
 
@@ -12413,7 +12440,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005000935";
+      window.__BUILD__ = "20261005001504";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
