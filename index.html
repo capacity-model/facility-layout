@@ -1849,7 +1849,7 @@
                 min="0"
                 max="4"
                 step="0.5"
-                value="1"
+                value="2"
                 aria-label="how much to open the aisles for drawing"
               />
               m
@@ -3054,7 +3054,7 @@
         skelUseRels: true,
         skelNodeSize: "area",
         showAisles: true,
-        aisleLift: 1,
+        aisleLift: 2,
         skelInflate: 25,
         skelShrink: 0,
         skelStations: true,
@@ -3965,8 +3965,8 @@
           id: "C",
           x: 8.5,
           y: 8.5,
-          w: 16,
-          h: 12.5,
+          w: 17,
+          h: 13.5,
           kind: "process",
           I: { edge: "top", t: 0.088235 },
           O: { edge: "top", t: 0.352941 },
@@ -6723,7 +6723,7 @@
         .getElementById("aisle-lift")
         .addEventListener("change", function (ev) {
           var v = parseFloat(ev.target.value);
-          state.aisleLift = isNaN(v) ? 0 : Math.max(0, Math.min(4, v));
+          state.aisleLift = isNaN(v) ? 2 : Math.max(0, Math.min(4, v));
           ev.target.value = String(state.aisleLift);
           /* A drawing setting: nothing is measured or scored again. */
           buildLayout();
@@ -12520,7 +12520,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005003054";
+      window.__BUILD__ = "20261005004618";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
