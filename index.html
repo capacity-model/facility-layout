@@ -2709,6 +2709,10 @@
                 <input id="net-shift" type="checkbox" />
                 Move centers to fit the aisles
               </span>
+              <span class="constraint-cell">
+                <input id="net-wayout" type="checkbox" checked />
+                Keep a way out of the building
+              </span>
             </div>
             <div class="constraints netview">
               <span class="constraint-cell">Show</span>
@@ -3104,6 +3108,7 @@
         skelUseRels: true,
         skelNodeSize: "area",
         showAisles: true,
+        keepWayOut: true,
         netShow: {
           building: true,
           centers: true,
@@ -11015,6 +11020,64 @@
         return moved;
       }
 
+      /* "You need to have aisles that will allow to cross the building and get out
+         of the building — if there's a fire, for example." A way out is not an
+         aisle the traffic happens to leave behind: it has to be there whether or
+         not anything travels along it. One line each way is cleared across the
+         whole plan, at the place where the least has to move, and the centers that
+         straddle it are pushed to one side or the other. */
+      function carveWayOut(centers, B, width) {
+        var moved = 0;
+
+        function clear(vertical) {
+          var span = vertical ? B.w : B.h;
+          var lo = function (c) {
+            return vertical ? c.x : c.y;
+          };
+          var size = function (c) {
+            return vertical ? c.w : c.h;
+          };
+          /* Try the middle of every gap already there, and the middle of the
+             plan, and keep whichever costs the least movement. */
+          var lines = [span / 2];
+          centers.forEach(function (c) {
+            lines.push(lo(c) - width / 2);
+            lines.push(lo(c) + size(c) + width / 2);
+          });
+          var best = null;
+          lines.forEach(function (at) {
+            if (at - width / 2 < 0 || at + width / 2 > span) return;
+            var cost = 0;
+            centers.forEach(function (c) {
+              var a = lo(c);
+              var b = a + size(c);
+              if (b <= at - width / 2 || a >= at + width / 2) return;
+              var up = b - (at - width / 2);
+              var down = at + width / 2 - a;
+              cost += Math.min(up, down);
+            });
+            if (!best || cost < best.cost) best = { at: at, cost: cost };
+          });
+          if (!best) return;
+
+          centers.forEach(function (c) {
+            var a = lo(c);
+            var b = a + size(c);
+            if (b <= best.at - width / 2 || a >= best.at + width / 2) return;
+            var up = b - (best.at - width / 2);
+            var down = best.at + width / 2 - a;
+            var shift = up <= down ? -up : down;
+            if (vertical) c.x += shift;
+            else c.y += shift;
+            moved += Math.abs(shift);
+          });
+        }
+
+        clear(false);
+        clear(true);
+        return moved;
+      }
+
       function netCandidate(blockCand) {
         var centers = netCenters(blockCand);
         var keep = state.centers;
@@ -11035,6 +11098,20 @@
         state.bandLow = 0;
         state.bandHigh = 100;
         try {
+          /* Cleared before anything is routed, so the traffic finds it rather than
+             the other way round. */
+          var wayOut = 0;
+          if (state.keepWayOut) {
+            var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+            /* Clearing the way shoves centers sideways, and pulling them apart
+               afterwards shoves some of them back into it, so the two take turns
+               until they agree. The last word belongs to the way out. */
+            for (var round = 0; round < 4; round++) {
+              wayOut += carveWayOut(centers, state.building, lane);
+              separateRects(centers, state.building, 40);
+            }
+            wayOut += carveWayOut(centers, state.building, lane);
+          }
           var copy = { centers: centers };
           normalizeStations(copy);
           state.centers = copy.centers;
@@ -12777,6 +12854,12 @@
           renderNetLayouts();
         });
 
+      document
+        .getElementById("net-wayout")
+        .addEventListener("change", function (ev) {
+          state.keepWayOut = ev.target.checked;
+        });
+
       /* "Any combination of these, I should be able to see." */
       [
         ["net-see-building", "building"],
@@ -13110,7 +13193,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005013029";
+      window.__BUILD__ = "20261005013717";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
