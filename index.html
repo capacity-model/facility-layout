@@ -1071,6 +1071,10 @@
         margin: 10px 0 0;
       }
 
+      .netview {
+        margin-top: 8px;
+      }
+
       .aisle-key span {
         display: inline-flex;
         align-items: center;
@@ -2691,6 +2695,29 @@
                 <input id="net-shift" type="checkbox" />
                 Move centers to fit the aisles
               </span>
+            </div>
+            <div class="constraints netview">
+              <span class="constraint-cell">Show</span>
+              <span class="constraint-cell">
+                <input id="net-see-building" type="checkbox" checked />
+                building
+              </span>
+              <span class="constraint-cell">
+                <input id="net-see-centers" type="checkbox" checked />
+                centers
+              </span>
+              <span class="constraint-cell">
+                <input id="net-see-stations" type="checkbox" checked />
+                I/O stations
+              </span>
+              <span class="constraint-cell">
+                <input id="net-see-aisles" type="checkbox" checked />
+                aisles
+              </span>
+              <span class="constraint-cell">
+                <input id="net-see-travel" type="checkbox" checked />
+                travel network
+              </span>
               <label class="constraint-cell">
                 Two-way below
                 <input
@@ -3054,6 +3081,13 @@
         skelUseRels: true,
         skelNodeSize: "area",
         showAisles: true,
+        netShow: {
+          building: true,
+          centers: true,
+          stations: true,
+          aisles: true,
+          travel: true,
+        },
         aisleLift: 2,
         skelInflate: 25,
         skelShrink: 0,
@@ -10779,6 +10813,9 @@
             segments: aisles.segments || [],
             junctions: junctions,
             traced: traced.length,
+            /* The routes as they were actually traced, which is the travel network
+               riding on the aisles rather than cutting across the blocks. */
+            paths: traced,
             routes: routes.length,
             shifted: shifted,
             overreach: overreach,
@@ -10844,72 +10881,96 @@
             fill: PAPER_BG,
           }),
         );
-        svg.appendChild(
-          svgEl("rect", {
-            x: 0,
-            y: 0,
-            width: B.w,
-            height: B.h,
-            fill: "#ffffff",
-            stroke: PAPER_INK,
-            "stroke-width": small ? 1 : 2,
-            "vector-effect": "non-scaling-stroke",
-          }),
-        );
+        var show = small
+          ? {
+              building: true,
+              centers: true,
+              stations: true,
+              aisles: true,
+              travel: true,
+            }
+          : state.netShow;
+        if (show.building)
+          svg.appendChild(
+            svgEl("rect", {
+              x: 0,
+              y: 0,
+              width: B.w,
+              height: B.h,
+              fill: "#ffffff",
+              stroke: PAPER_INK,
+              "stroke-width": small ? 1 : 2,
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
 
         /* The aisles go under the blocks, so a segment that has been forced to
            run through a center is visible rather than hidden. */
         var peak = cand.segments.reduce(function (m, seg) {
           return Math.max(m, seg.total);
         }, 0);
-        cand.segments.forEach(function (seg) {
-          var x = (seg.minX + 0.5) * CELL;
-          var y = (seg.minY + 0.5) * CELL;
-          var along = seg.length;
-          svg.appendChild(
-            svgEl("rect", {
-              class: "aisle-seg",
-              x: seg.dir === "h" ? x - CELL / 2 : x - seg.width / 2,
-              y: seg.dir === "h" ? y - seg.width / 2 : y - CELL / 2,
-              width: seg.dir === "h" ? along : seg.width,
-              height: seg.dir === "h" ? seg.width : along,
-              fill: heatColour(peak > 0 ? seg.total / peak : 0),
-              "fill-opacity": 0.75,
-              stroke: "none",
-            }),
-          );
-        });
-        cand.junctions.forEach(function (j) {
-          svg.appendChild(
-            svgEl("rect", {
-              class: "aisle-cross",
-              x: j.x - j.w / 2,
-              y: j.y - j.h / 2,
-              width: j.w,
-              height: j.h,
-              fill: "none",
-              stroke: PAPER_INK,
-              "stroke-width": small ? 0.6 : 1,
-              "stroke-dasharray": "2 2",
-              "vector-effect": "non-scaling-stroke",
-            }),
-          );
-        });
+        if (show.aisles)
+          cand.segments.forEach(function (seg) {
+            var x = (seg.minX + 0.5) * CELL;
+            var y = (seg.minY + 0.5) * CELL;
+            var along = seg.length;
+            svg.appendChild(
+              svgEl("rect", {
+                class: "aisle-seg",
+                x: seg.dir === "h" ? x - CELL / 2 : x - seg.width / 2,
+                y: seg.dir === "h" ? y - seg.width / 2 : y - CELL / 2,
+                width: seg.dir === "h" ? along : seg.width,
+                height: seg.dir === "h" ? seg.width : along,
+                fill: heatColour(peak > 0 ? seg.total / peak : 0),
+                "fill-opacity": 0.75,
+                stroke: "none",
+              }),
+            );
+          });
+        if (show.aisles)
+          cand.junctions.forEach(function (j) {
+            svg.appendChild(
+              svgEl("rect", {
+                class: "aisle-cross",
+                x: j.x - j.w / 2,
+                y: j.y - j.h / 2,
+                width: j.w,
+                height: j.h,
+                fill: "none",
+                stroke: PAPER_INK,
+                "stroke-width": small ? 0.6 : 1,
+                "stroke-dasharray": "2 2",
+                "vector-effect": "non-scaling-stroke",
+              }),
+            );
+          });
 
         cand.centers.forEach(function (c) {
-          svg.appendChild(
-            svgEl("rect", {
-              x: c.x,
-              y: c.y,
-              width: c.w,
-              height: c.h,
-              fill: kindFill(c.kind),
-              stroke: PAPER_INK,
-              "stroke-width": small ? 1 : 1.5,
-              "vector-effect": "non-scaling-stroke",
-            }),
-          );
-          if (!small) {
+          if (show.centers)
+            svg.appendChild(
+              svgEl("rect", {
+                x: c.x,
+                y: c.y,
+                width: c.w,
+                height: c.h,
+                fill: kindFill(c.kind),
+                stroke: PAPER_INK,
+                "stroke-width": small ? 1 : 1.5,
+                "vector-effect": "non-scaling-stroke",
+              }),
+            );
+          /* The docks the flows arrive at and leave from, drawn whether or not the
+             center around them is. */
+          if (show.stations)
+            stationsOf(c).forEach(function (st) {
+              var at2 = stationAt(c, st);
+              if (!at2) return;
+              var mark = stationMark(at2, st);
+              mark.appendChild(svgEl("title", {}));
+              mark.firstChild.textContent = c.id + " " + st.id;
+              svg.appendChild(mark);
+            });
+          if (!small && show.centers) {
             var label = svgEl("text", {
               x: c.x + c.w / 2,
               y: c.y + c.h / 2 + 0.8,
@@ -10922,6 +10983,40 @@
             svg.appendChild(label);
           }
         });
+
+        /* The travel network as it was routed: along the aisles, turning at the
+           intersections, reaching each station's own dock. Drawn last, over
+           whatever else is showing, because it is the thing being judged. */
+        if (show.travel && cand.paths) {
+          var busiest = cand.paths.reduce(function (m, t) {
+            return Math.max(m, (t.route && t.route.trips) || 0);
+          }, 0);
+          cand.paths.forEach(function (t) {
+            if (!t.points || t.points.length < 2) return;
+            var trips = (t.route && t.route.trips) || 0;
+            var line = svgEl("polyline", {
+              class: "travel-link",
+              points: t.points
+                .map(function (q) {
+                  return q.x + "," + q.y;
+                })
+                .join(" "),
+              fill: "none",
+              stroke:
+                t.route && t.route.kind === "empty"
+                  ? FLOW_INK.empty
+                  : FLOW_INK.loaded,
+              "stroke-width":
+                (small ? 0.5 : 0.8) +
+                (busiest > 0 ? (trips / busiest) * (small ? 1.2 : 2.2) : 0),
+              "stroke-opacity": 0.75,
+              "stroke-linejoin": "round",
+              "stroke-linecap": "round",
+              "vector-effect": "non-scaling-stroke",
+            });
+            svg.appendChild(line);
+          });
+        }
         return svg;
       }
 
@@ -12201,6 +12296,20 @@
           renderNetLayouts();
         });
 
+      /* "Any combination of these, I should be able to see." */
+      [
+        ["net-see-building", "building"],
+        ["net-see-centers", "centers"],
+        ["net-see-stations", "stations"],
+        ["net-see-aisles", "aisles"],
+        ["net-see-travel", "travel"],
+      ].forEach(function (pair) {
+        document.getElementById(pair[0]).addEventListener("change", function (ev) {
+          state.netShow[pair[1]] = ev.target.checked;
+          renderNetLayouts();
+        });
+      });
+
       document.getElementById("net-accept").addEventListener("click", function () {
         var alts = state.netAlts || [];
         if (!alts.length) return;
@@ -12520,7 +12629,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005004618";
+      window.__BUILD__ = "20261005005455";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
