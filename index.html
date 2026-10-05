@@ -2503,7 +2503,7 @@
                   min="0"
                   max="75"
                   step="5"
-                  value="0"
+                  value="25"
                   aria-label="shrink nodes for drawing, percent"
                 />
                 % smaller
@@ -3128,7 +3128,7 @@
         },
         aisleLift: 2,
         skelInflate: 25,
-        skelShrink: 0,
+        skelShrink: 25,
         skelStations: true,
         blockGrossMode: "percent",
         blockGrossPct: 30,
@@ -9944,7 +9944,7 @@
             label: "Squared up",
             hint: "a setting, not a result: how hard this alternative was pulled toward those eight directions. Squaring a drawing up costs link error, so the alternatives are spread across the range rather than all pulled the same way.",
             get: function (s, alt) {
-              return Math.round((alt.cardinalPull / 0.36) * 100);
+              return Math.round(((alt.cardinalPull || 0) / 0.36) * 100);
             },
             fmt: 0,
             unit: "%",
@@ -10107,6 +10107,9 @@
           links: alt.links,
           score: alt.score,
           edited: alt.edited,
+          /* Carried, or the table reads NaN for a skeleton that has been accepted
+             or brought back from the history. */
+          cardinalPull: alt.cardinalPull || 0,
           pinned: alt.pinned ? JSON.parse(JSON.stringify(alt.pinned)) : undefined,
           placed: alt.placed.map(function (p) {
             return { id: p.id, x: p.x, y: p.y, r: p.r };
@@ -12876,7 +12879,7 @@
         .getElementById("skel-shrink")
         .addEventListener("change", function (ev) {
           var v = parseFloat(ev.target.value);
-          state.skelShrink = isNaN(v) ? 0 : Math.max(0, Math.min(75, v));
+          state.skelShrink = isNaN(v) ? 25 : Math.max(0, Math.min(75, v));
           ev.target.value = String(state.skelShrink);
           /* Only the drawing changes, so nothing is generated or scored again. */
           renderSkeleton();
@@ -13507,7 +13510,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005020744";
+      window.__BUILD__ = "20261005021223";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
