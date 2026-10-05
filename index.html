@@ -2654,6 +2654,9 @@
           </div>
 
           <div class="skel-alts" id="block-alts"></div>
+          <h3 class="skel-h3">Accepted block layouts</h3>
+          <p class="note" id="block-history-note"></p>
+          <div class="skel-history" id="block-history"></div>
 
           <div class="paper geo-paper">
             <div id="block-canvas"></div>
@@ -2795,6 +2798,9 @@
           </div>
 
           <div class="skel-alts" id="net-alts"></div>
+          <h3 class="skel-h3">Accepted net layouts</h3>
+          <p class="note" id="net-history-note"></p>
+          <div class="skel-history" id="net-history"></div>
 
           <div class="paper geo-paper">
             <div id="net-canvas"></div>
@@ -2813,12 +2819,12 @@
           </div>
 
           <h3 class="skel-h3">Travel network</h3>
-          <p class="note" id="travel-note">
+          <p class="note" id="travelnet-note">
             What each link of the travel network carries, and which way it goes. The
             table above is the aisles; this one is the network running along them.
           </p>
           <div class="scalewrap">
-            <table class="flowtable compare" id="travel-grid"></table>
+            <table class="flowtable compare" id="travelnet-grid"></table>
           </div>
         </section>
       </div>
@@ -3111,6 +3117,8 @@
         skelNodeSize: "area",
         showAisles: true,
         keepWayOut: true,
+        blockHistory: [],
+        netHistory: [],
         netShow: {
           building: true,
           centers: true,
@@ -6038,6 +6046,41 @@
 
       var CASES_KEY = "isye6202.layout.cases.v1";
       var SKEL_KEY = "isye6202.layout.skeletons.v1";
+      /* "It is crucial for the user to be able to save and retrieve all past and
+         current steps, designs, and results." The skeletons were kept; the block
+         and net layouts grown from them were not, so a design could be reached and
+         then lost. Each stage now keeps what was accepted, and each entry records
+         what it was grown from, which is the chain from one stage to the next. */
+      var BLOCK_KEY = "isye6202.layout.blocks.v1";
+      var NET_KEY = "isye6202.layout.nets.v1";
+
+      function saveDesigns(key, list) {
+        try {
+          window.localStorage.setItem(key, JSON.stringify(list || []));
+        } catch (err) {
+          /* the page still works without a saved history */
+        }
+      }
+
+      function loadDesigns(key) {
+        try {
+          var parsed = JSON.parse(window.localStorage.getItem(key));
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          return [];
+        }
+      }
+
+      function keepDesign(key, listName, label, from, cand) {
+        state[listName] = (state[listName] || []).concat([
+          {
+            label: label,
+            from: from,
+            cand: JSON.parse(JSON.stringify(cand)),
+          },
+        ]);
+        saveDesigns(key, state[listName]);
+      }
 
       /* Accepted skeletons belong to the case, and the working draft is a case
          too, so they are kept across a reload like everything else on the page. */
@@ -6189,6 +6232,9 @@
               alt: serializeSkeleton(entry.alt),
             };
           }),
+          /* Every step kept, not only the first of the three. */
+          blocks: JSON.parse(JSON.stringify(state.blockHistory || [])),
+          nets: JSON.parse(JSON.stringify(state.netHistory || [])),
         };
       }
 
@@ -6211,6 +6257,10 @@
               : null;
           })
           .filter(Boolean);
+        state.blockHistory = JSON.parse(JSON.stringify(snap.blocks || []));
+        state.netHistory = JSON.parse(JSON.stringify(snap.nets || []));
+        saveDesigns(BLOCK_KEY, state.blockHistory);
+        saveDesigns(NET_KEY, state.netHistory);
         state.skelAlts = [];
         state.skelPick = 0;
         state.skelRounds = [];
@@ -6295,7 +6345,13 @@
           applyCase(store.cases[store.current]);
         } else {
           state.skelHistory = loadSkeletons();
+          state.blockHistory = loadDesigns(BLOCK_KEY);
+          state.netHistory = loadDesigns(NET_KEY);
         }
+        /* The kept designs are on the page from the start, not only once their
+           stage has been used. */
+        renderBlockLayouts();
+        renderNetLayouts();
         renderCases();
         renderCompare();
 
@@ -10596,6 +10652,19 @@
       }
 
       function renderBlockLayouts() {
+        renderDesignHistory(
+          "block-history",
+          "block-history-note",
+          state.blockHistory,
+          function (c) {
+            return drawBlockLayout(c, { small: true });
+          },
+          function (c) {
+            state.blockAlts = [JSON.parse(JSON.stringify(c))];
+            state.blockPick = 0;
+            renderBlockLayouts();
+          },
+        );
         var strip = document.getElementById("block-alts");
         var canvas = document.getElementById("block-canvas");
         var note = document.getElementById("block-note");
@@ -11556,13 +11625,56 @@
         return svg;
       }
 
+      /* The same strip the skeletons have: a picture, what it was grown from, and
+         a click to bring it back. */
+      function renderDesignHistory(hostId, noteId, list, draw, restore) {
+        var host = document.getElementById(hostId);
+        var note = document.getElementById(noteId);
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+        var kept = list || [];
+        if (note)
+          note.textContent = kept.length
+            ? kept.length +
+              (kept.length === 1 ? " kept." : " kept.") +
+              " Click one to bring it back."
+            : "None accepted yet. Accepting one keeps it here, with the design it was grown from.";
+        kept.forEach(function (entry) {
+          var cell = el("div", { class: "skel-alt" });
+          try {
+            cell.appendChild(draw(entry.cand));
+          } catch (err) {
+            /* a design saved by an older build may not draw; it is still listed */
+          }
+          cell.appendChild(el("span", { text: entry.label }));
+          if (entry.from) cell.appendChild(el("span", { text: entry.from }));
+          cell.addEventListener("click", function () {
+            restore(entry.cand);
+          });
+          host.appendChild(cell);
+        });
+      }
+
       function renderNetLayouts() {
+        renderDesignHistory(
+          "net-history",
+          "net-history-note",
+          state.netHistory,
+          function (c) {
+            return drawNetLayout(c, { small: true });
+          },
+          function (c) {
+            state.netAlts = [JSON.parse(JSON.stringify(c))];
+            state.netPick = 0;
+            renderNetLayouts();
+          },
+        );
         var strip = document.getElementById("net-alts");
         var canvas = document.getElementById("net-canvas");
         var note = document.getElementById("net-note");
         var table = document.getElementById("net-scores");
         var traffic = document.getElementById("traffic-grid");
-        var travel = document.getElementById("travel-grid");
+        var travel = document.getElementById("travelnet-grid");
         if (!strip || !canvas) return;
         [strip, canvas, table, traffic, travel].forEach(function (host) {
           while (host.firstChild) host.removeChild(host.firstChild);
@@ -11903,7 +12015,7 @@
         });
         table.appendChild(tbody);
 
-        var note = document.getElementById("travel-note");
+        var note = document.getElementById("travelnet-note");
         if (note)
           note.textContent = segs.length
             ? segs.length +
@@ -12965,6 +13077,19 @@
             )
           )
             return;
+          keepDesign(
+            BLOCK_KEY,
+            "blockHistory",
+            "#" +
+              (state.blockHistory.length + 1) +
+              " \u00b7 " +
+              cand.label +
+              " \u00b7 " +
+              (cand.score ? (cand.score.score * 100).toFixed(1) + "%" : ""),
+            "from the skeleton on screen",
+            cand,
+          );
+          renderBlockLayouts();
           /* The generated layout becomes the live one, so every score, matrix and
            drawing in the rest of the app answers it from here on. */
           var geo = normalizeStations({
@@ -13060,6 +13185,19 @@
           )
         )
           return;
+        keepDesign(
+          NET_KEY,
+          "netHistory",
+          "#" +
+            (state.netHistory.length + 1) +
+            " \u00b7 " +
+            cand.segments.length +
+            " segments \u00b7 " +
+            (cand.score ? (cand.score.score * 100).toFixed(1) + "%" : ""),
+          "from the block layout on screen",
+          cand,
+        );
+        renderNetLayouts();
         var geo = normalizeStations({
           building: state.building,
           units: state.units,
@@ -13369,7 +13507,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005015122";
+      window.__BUILD__ = "20261005020744";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
