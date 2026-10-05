@@ -2661,6 +2661,7 @@
           <div class="scalewrap">
             <table class="flowtable compare" id="block-scores"></table>
           </div>
+          <p class="note" id="block-kept"></p>
         </section>
 
         <section class="panel skel">
@@ -10292,7 +10293,79 @@
         }
       }
 
+      /* He reads a skeleton out loud as a list of facts — "C is to the left of H,
+         H is to the left of J, J is above G" — and then asks whether the layout
+         still says the same thing. A link that runs mostly across is a left-right
+         fact, one that runs mostly up and down is an above-below fact, and one at
+         an angle is, in his words, "fuzzy, it's either-or": either reading will
+         do. */
+      function skeletonRelations(alt) {
+        var at = {};
+        alt.placed.forEach(function (p) {
+          at[p.id] = p;
+        });
+        var seen = {};
+        var out = [];
+        alt.links.forEach(function (link) {
+          var a = alt.placed[link.a];
+          var b = alt.placed[link.b];
+          if (!a || !b) return;
+          var key = a.id < b.id ? a.id + "|" + b.id : b.id + "|" + a.id;
+          if (seen[key]) return;
+          seen[key] = true;
+          var dx = b.x - a.x;
+          var dy = b.y - a.y;
+          var kind =
+            Math.abs(dx) > Math.abs(dy) * 2
+              ? "across"
+              : Math.abs(dy) > Math.abs(dx) * 2
+                ? "down"
+                : "either";
+          out.push({ a: a.id, b: b.id, dx: dx, dy: dy, kind: kind });
+        });
+        return out;
+      }
+
+      function relationsKept(cand, relations) {
+        var at = {};
+        cand.centers.forEach(function (c) {
+          at[c.id] = { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+        });
+        var broken = [];
+        var held = 0;
+        relations.forEach(function (r) {
+          var a = at[r.a];
+          var b = at[r.b];
+          if (!a || !b) return;
+          var dx = b.x - a.x;
+          var dy = b.y - a.y;
+          var acrossOk = dx * r.dx > 0;
+          var downOk = dy * r.dy > 0;
+          var ok =
+            r.kind === "across"
+              ? acrossOk
+              : r.kind === "down"
+                ? downOk
+                : acrossOk || downOk;
+          if (ok) held++;
+          else
+            broken.push(
+              r.a +
+                (r.kind === "down"
+                  ? r.dy > 0
+                    ? " above "
+                    : " below "
+                  : r.dx > 0
+                    ? " left of "
+                    : " right of ") +
+                r.b,
+            );
+        });
+        return { held: held, total: relations.length, broken: broken };
+      }
+
       function generateBlockLayouts(alt, count) {
+        var said = skeletonRelations(alt);
         var out = [];
         /* Alternatives differ by how much room the aisles are left: a tighter
            layout scores better on travel and leaves less space to route it. */
@@ -10309,6 +10382,7 @@
             var r = c.h > 0 ? c.w / c.h : 1;
             return Math.max(m, r, 1 / r);
           }, 1);
+          cand.relations = relationsKept(cand, said);
           cand.score = measureCandidate(cand);
           cand.label = Math.round((cand.scale - 1) * 100) + "% gross";
           out.push(cand);
@@ -10488,6 +10562,26 @@
               " m of it. Lower the margin, or give the centers less area."
             : "Fits with no overlap. Accept puts it on the Layout page.";
 
+        /* Which of the skeleton's own statements this layout no longer makes. */
+        var kept = document.getElementById("block-kept");
+        if (kept) {
+          var r = chosen.relations;
+          if (!r) kept.textContent = "";
+          else if (!r.broken.length)
+            kept.textContent =
+              "Every one of the " +
+              r.total +
+              " relative positions the skeleton settled is still true here.";
+          else
+            kept.textContent =
+              r.held +
+              " of " +
+              r.total +
+              " relative positions survive. The skeleton had " +
+              r.broken.join(", ") +
+              " \u2014 this layout does not.";
+        }
+
         var COLUMNS = [
           {
             label: "Gross",
@@ -10556,6 +10650,16 @@
               return c.worstRatio || 1;
             },
             fmt: 2,
+            plain: true,
+          },
+          {
+            /* "None of them for me respect completely this." */
+            label: "Positions kept",
+            text: function (c) {
+              return c.relations
+                ? c.relations.held + " of " + c.relations.total
+                : "—";
+            },
             plain: true,
           },
           {
@@ -13193,7 +13297,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005013717";
+      window.__BUILD__ = "20261005014416";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
