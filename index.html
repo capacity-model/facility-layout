@@ -1880,6 +1880,7 @@
             <table class="flowtable compare" id="gap-grid"></table>
           </div>
           <p class="note" id="gap-note"></p>
+          <p class="note" id="gap-escape"></p>
 
           <div class="kinds">
             <h3>Center types</h3>
@@ -5305,6 +5306,24 @@
         return out;
       }
 
+      /* "You need to have aisles that will allow to cross the building and get
+         out of the building — if there's a fire, for example." An aisle that
+         reaches a wall at both ends is a way out; one that stops short of either
+         is not, however wide it is. */
+      function throughAisles() {
+        var B = state.building;
+        var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+        var walk = state.walkWidth > 0 ? state.walkWidth : 1;
+        return aisleBands().filter(function (g) {
+          var wide = (g.runs === "north–south" ? g.run.w : g.run.h) >= walk - 1e-9;
+          if (!wide) return false;
+          void lane;
+          return g.runs === "north–south"
+            ? g.run.y <= 1e-6 && g.run.y + g.run.h >= B.h - 1e-6
+            : g.run.x <= 1e-6 && g.run.x + g.run.w >= B.w - 1e-6;
+        });
+      }
+
       function renderGaps() {
         var table = document.getElementById("gap-grid");
         var note = document.getElementById("gap-note");
@@ -5390,6 +5409,23 @@
                   ? " is too narrow even to walk through."
                   : " are too narrow even to walk through.")
               : "Every one of them takes at least a walking lane.");
+        }
+
+        var escape = document.getElementById("gap-escape");
+        if (escape) {
+          var through = throughAisles();
+          var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+          var forVehicles = through.filter(function (g) {
+            return g.gap >= lane - 1e-9;
+          });
+          escape.textContent = through.length
+            ? through.length +
+              (through.length === 1
+                ? " aisle crosses the building wall to wall, "
+                : " aisles cross the building wall to wall, ") +
+              forVehicles.length +
+              " of them wide enough for a vehicle. Those are the ways out."
+            : "No aisle crosses the building from one wall to the other, so there is no way out that does not pass through a center.";
         }
       }
 
@@ -9715,7 +9751,10 @@
           (chosen.links.length === 1 ? " link" : " links") +
           " laid out, " +
           alts.length +
-          " alternatives. Drag a node to edit; Accept keeps it.";
+          (alts.length === 1 ? " alternative. " : " alternatives. ") +
+          (alts.length === 1
+            ? "This is the skeleton the block layouts are grown from. Drag a node to place it — a node you move is pinned, and refining works around it."
+            : "Drag a node to place it — a node you move is pinned, and refining works around it. Accept keeps the one on screen and carries on from it.");
 
         renderSkeletonScores(alts);
         renderSkeletonHistory();
@@ -12567,6 +12606,12 @@
             rounds: state.skelRounds.slice(),
           },
         ]);
+        /* "At some point I think we need to accept and exit." Accepting leaves the
+           set of alternatives behind: the one chosen becomes the skeleton, it is
+           what the block layouts are grown from, and it can still be edited or
+           refined from there. */
+        state.skelAlts = [cloneAlt(chosen)];
+        state.skelPick = 0;
         saveSkeletons();
         renderSkeleton();
       });
@@ -13065,7 +13110,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005012149";
+      window.__BUILD__ = "20261005013029";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
