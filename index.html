@@ -2791,6 +2791,15 @@
           <div class="scalewrap">
             <table class="flowtable compare" id="traffic-grid"></table>
           </div>
+
+          <h3 class="skel-h3">Travel network</h3>
+          <p class="note" id="travel-note">
+            What each link of the travel network carries, and which way it goes. The
+            table above is the aisles; this one is the network running along them.
+          </p>
+          <div class="scalewrap">
+            <table class="flowtable compare" id="travel-grid"></table>
+          </div>
         </section>
       </div>
 
@@ -11026,8 +11035,9 @@
         var note = document.getElementById("net-note");
         var table = document.getElementById("net-scores");
         var traffic = document.getElementById("traffic-grid");
+        var travel = document.getElementById("travel-grid");
         if (!strip || !canvas) return;
-        [strip, canvas, table, traffic].forEach(function (host) {
+        [strip, canvas, table, traffic, travel].forEach(function (host) {
           while (host.firstChild) host.removeChild(host.firstChild);
         });
 
@@ -11149,6 +11159,7 @@
         ];
         paintCompareTable(table, alts, COLUMNS, state.netPick, "Net layout");
         paintTrafficTable(traffic, chosen);
+        if (travel) paintTravelTable(travel, chosen);
       }
 
       /* Shared by the block and net tables: one row per alternative, the best
@@ -11199,6 +11210,183 @@
 
       /* The traffic table the course asks for: what each aisle segment and each
          intersection carries, loaded and empty kept apart. */
+      /* "For every segment in the travel network, we should see how much flow we
+         account for… how much intensity we have going east-west and how much
+         west-east." The aisle table answers for the aisles; this one answers for
+         the network that runs along them. Each route is walked a cell at a time so
+         that two routes sharing part of a run are counted on the part they share,
+         and neighbouring cells carrying exactly the same load are then merged back
+         into one segment. */
+      function travelSegments(cand) {
+        /* "Segments and boxes": a box is an intersection, and what runs between
+           two of them is a segment. So cells inside a junction are left to the
+           traffic table, and a run is cut where it enters one. */
+        function inBox(x, y) {
+          var js = cand.junctions || [];
+          for (var i = 0; i < js.length; i++) {
+            var j = js[i];
+            if (
+              x >= j.x - j.w / 2 - 1e-9 &&
+              x <= j.x + j.w / 2 + 1e-9 &&
+              y >= j.y - j.h / 2 - 1e-9 &&
+              y <= j.y + j.h / 2 + 1e-9
+            )
+              return true;
+          }
+          return false;
+        }
+
+        var cells = {};
+        (cand.paths || []).forEach(function (t) {
+          var trips = (t.route && t.route.trips) || 0;
+          if (!(trips > 0)) return;
+          var empty = t.route && t.route.kind === "empty";
+          var pts = t.points || [];
+          for (var i = 1; i < pts.length; i++) {
+            var a = pts[i - 1];
+            var b = pts[i];
+            var horiz = Math.abs(a.y - b.y) < 1e-9;
+            var span = horiz ? b.x - a.x : b.y - a.y;
+            var steps = Math.round(Math.abs(span) / CELL);
+            if (!steps) continue;
+            var forward = span > 0;
+            for (var k = 0; k < steps; k++) {
+              var cx = horiz ? Math.min(a.x, b.x) + k * CELL : a.x;
+              var cy = horiz ? a.y : Math.min(a.y, b.y) + k * CELL;
+              if (inBox(cx, cy)) continue;
+              var key =
+                (horiz ? "h" : "v") + "|" + cx.toFixed(2) + "|" + cy.toFixed(2);
+              var cell =
+                cells[key] ||
+                (cells[key] = {
+                  horiz: horiz,
+                  x: cx,
+                  y: cy,
+                  fwd: 0,
+                  back: 0,
+                  loaded: 0,
+                  empty: 0,
+                });
+              if (forward) cell.fwd += trips;
+              else cell.back += trips;
+              if (empty) cell.empty += trips;
+              else cell.loaded += trips;
+            }
+          }
+        });
+
+        /* Merge along the run while the load stays the same. */
+        var keys = Object.keys(cells).sort(function (m, n) {
+          var a = cells[m];
+          var b = cells[n];
+          if (a.horiz !== b.horiz) return a.horiz ? -1 : 1;
+          if (a.horiz) return a.y - b.y || a.x - b.x;
+          return a.x - b.x || a.y - b.y;
+        });
+        var out = [];
+        var run = null;
+        function same(c, d) {
+          return (
+            c.horiz === d.horiz &&
+            (c.horiz
+              ? Math.abs(c.y - d.y) < 1e-9 && Math.abs(d.x - (c.x + CELL)) < 1e-9
+              : Math.abs(c.x - d.x) < 1e-9 && Math.abs(d.y - (c.y + CELL)) < 1e-9)
+          );
+        }
+        keys.forEach(function (key) {
+          var c = cells[key];
+          if (run && same(run.last, c)) {
+            run.cells++;
+            run.last = c;
+            /* A route can join part-way along a segment, so the segment has to
+               carry what its busiest point carries — reported whole, so that the
+               two directions and the loaded and empty halves still add up. */
+            if (c.fwd + c.back > run.fwd + run.back) {
+              run.fwd = c.fwd;
+              run.back = c.back;
+              run.loaded = c.loaded;
+              run.empty = c.empty;
+            }
+            return;
+          }
+          run = {
+            horiz: c.horiz,
+            x: c.x,
+            y: c.y,
+            cells: 1,
+            last: c,
+            fwd: c.fwd,
+            back: c.back,
+            loaded: c.loaded,
+            empty: c.empty,
+          };
+          out.push(run);
+        });
+        out.forEach(function (r) {
+          r.length = r.cells * CELL;
+        });
+        return out.sort(function (a, b) {
+          return b.fwd + b.back - (a.fwd + a.back);
+        });
+      }
+
+      function paintTravelTable(table, cand) {
+        while (table.firstChild) table.removeChild(table.firstChild);
+        var segs = travelSegments(cand).filter(function (r) {
+          return r.fwd + r.back > 0;
+        });
+        var thead = el("thead");
+        var head = el("tr");
+        [
+          "Segment",
+          "Runs",
+          "Length",
+          "East / south",
+          "West / north",
+          "Loaded",
+          "Empty",
+          "Total",
+        ].forEach(function (label, i) {
+          head.appendChild(
+            el("th", { class: i === 0 ? "corner" : "", text: label }),
+          );
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var tbody = el("tbody");
+        segs.forEach(function (r, i) {
+          var tr = el("tr");
+          tr.appendChild(el("td", { class: "rowhead", text: "Link " + (i + 1) }));
+          tr.appendChild(
+            el("td", {
+              class: "total",
+              text: r.horiz ? "east–west" : "north–south",
+            }),
+          );
+          tr.appendChild(el("td", { class: "total", text: inUnits(r.length, 1) }));
+          tr.appendChild(el("td", { class: "total", text: String(r.fwd) }));
+          tr.appendChild(el("td", { class: "total", text: String(r.back) }));
+          tr.appendChild(el("td", { class: "total", text: String(r.loaded) }));
+          tr.appendChild(el("td", { class: "total", text: String(r.empty) }));
+          tr.appendChild(
+            el("td", { class: "total", text: String(r.fwd + r.back) }),
+          );
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        var note = document.getElementById("travel-note");
+        if (note)
+          note.textContent = segs.length
+            ? segs.length +
+              (segs.length === 1 ? " link" : " links") +
+              " carry the " +
+              cand.routes +
+              " routed flows. East and south count one way, west and north the other."
+            : "Nothing is routed yet.";
+      }
+
       function paintTrafficTable(table, cand) {
         var thead = el("thead");
         var head = el("tr");
@@ -12629,7 +12817,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005005455";
+      window.__BUILD__ = "20261005010128";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
