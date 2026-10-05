@@ -8900,6 +8900,7 @@
         });
 
         var links = [];
+        var walls = {};
         var seen = {};
         function push(key, a, b, weight, ideal, kind, proximity) {
           if (a === undefined || b === undefined || a === b) return;
@@ -8962,6 +8963,23 @@
             if (!inBand(relationshipWeight(row))) return;
             var i = index[row.c1];
             var j = index[row.c2];
+            /* "Consider the building as something with which I can have a
+               relationship." A relationship with the outside names one center and
+               one wall, so it is not a link between two nodes — it is a pull on
+               the one node toward whichever wall is nearest it. These used to be
+               dropped here, which is why a center that ships out of the building
+               could be generated into the middle of it. */
+            if (row.c1 === "OUT" || row.c2 === "OUT") {
+              var only = row.c1 === "OUT" ? j : i;
+              if (only === undefined) return;
+              var w = importanceOf(row.importance);
+              var pull = w.weight === null ? maxImportanceWeight() : w.weight;
+              var want = idealSeparation(row.proximity);
+              var had = walls[only];
+              if (!had || pull > had.weight)
+                walls[only] = { weight: pull, ideal: want };
+              return;
+            }
             if (i === undefined || j === undefined) return;
             var imp = importanceOf(row.importance);
             /* A Vital relationship carries no score but binds hardest, so on the
@@ -8992,7 +9010,18 @@
           });
         });
 
-        return { nodes: nodes, links: links };
+        /* A wall relationship is weighed on the same scale as the others, so that
+           asking a center to be against the wall counts for as much as asking two
+           centers to be adjacent. */
+        var wallPeak = 0;
+        Object.keys(walls).forEach(function (k) {
+          if (walls[k].weight > wallPeak) wallPeak = walls[k].weight;
+        });
+        Object.keys(walls).forEach(function (k) {
+          walls[k].pull = wallPeak > 0 ? walls[k].weight / wallPeak : 0;
+        });
+
+        return { nodes: nodes, links: links, walls: walls };
       }
 
       function maxImportanceWeight() {
@@ -9009,6 +9038,15 @@
       }
 
       /* One relaxation from one starting arrangement. */
+      /* How far a node sits from the wall it was asked to be near, measured from
+         its rim. Zero once it is touching. */
+      function wallGap(bounds, px, py, r) {
+        return Math.max(
+          0,
+          Math.min(px - r, py - r, bounds.w - px - r, bounds.h - py - r),
+        );
+      }
+
       function relaxSkeleton(input, start, bounds, rounds, cardinalPull) {
         var n = input.nodes.length;
         var mode = state.skelNodeSize;
@@ -9080,6 +9118,30 @@
             }
           });
 
+          /* "PF is directly adjacent to the western wall… so when I'm generating
+             here, it would have avoided putting PF where it is." A center asked to
+             sit against the outside is drawn toward whichever wall is nearest it,
+             until its rim is where the relationship wants it. */
+          if (input.walls)
+            Object.keys(input.walls).forEach(function (k) {
+              var i = Number(k);
+              var want = input.walls[k];
+              if (!want || !want.pull) return;
+              var r = radii[i];
+              var left = x[i] - r;
+              var right = bounds.w - x[i] - r;
+              var top = y[i] - r;
+              var down = bounds.h - y[i] - r;
+              var near = Math.min(left, right, top, down);
+              var off = near - (want.ideal || 0);
+              if (off <= 0) return;
+              var force = 0.09 * want.pull * off;
+              if (near === left) dx[i] -= force;
+              else if (near === right) dx[i] += force;
+              else if (near === top) dy[i] -= force;
+              else dy[i] += force;
+            });
+
           for (var i2 = 0; i2 < n; i2++) {
             for (var j2 = i2 + 1; j2 < n; j2++) {
               var vx2 = x[j2] - x[i2];
@@ -9142,6 +9204,29 @@
             x[c] = Math.max(radii[c], Math.min(bounds.w - radii[c], x[c]));
             y[c] = Math.max(radii[c], Math.min(bounds.h - radii[c], y[c]));
           }
+          /* A center asked to be against the outside is put there, in the same
+             pass that clears the overlaps, so the two settle together instead of
+             the springs holding it off the wall. */
+          if (input.walls)
+            Object.keys(input.walls).forEach(function (k) {
+              var i = Number(k);
+              var want = input.walls[k];
+              if (!want || !want.pull) return;
+              var r = radii[i];
+              var aim = want.ideal || 0;
+              var left = x[i] - r;
+              var right = bounds.w - x[i] - r;
+              var top = y[i] - r;
+              var down = bounds.h - y[i] - r;
+              var near = Math.min(left, right, top, down);
+              if (near <= aim + 1e-6) return;
+              var move = (near - aim) * want.pull;
+              if (near === left) x[i] -= move;
+              else if (near === right) x[i] += move;
+              else if (near === top) y[i] -= move;
+              else y[i] += move;
+              if (move > worst) worst = move;
+            });
           if (worst < 1e-4) break;
         }
 
@@ -12928,7 +13013,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005010843";
+      window.__BUILD__ = "20261005011614";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
