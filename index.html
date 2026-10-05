@@ -2389,6 +2389,26 @@
         </section>
 
         <section class="panel flow">
+          <h2 data-unit="Traffic">Traffic</h2>
+
+          <p class="scale-lede">
+            The travel evaluation above says how far the trips go. This says
+            <em>where</em> they go: for every corridor in the layout, how many trips
+            run along it and which way they run. A trip is counted once on each
+            corridor it uses, the way a road counts the vehicles that pass over it,
+            so a corridor carrying a lot in one direction and little in the other is
+            a corridor whose lanes are unevenly used. These are the figures that set
+            how many lanes a corridor needs, and so how wide it has to be.
+          </p>
+
+          <div class="scalewrap">
+            <table class="flowtable compare" id="flow-traffic-grid"></table>
+          </div>
+
+          <p class="note" id="flow-traffic-note"></p>
+        </section>
+
+        <section class="panel flow">
           <div class="scale-head">
             <h2 data-unit="Distance matrix">Distance matrix</h2>
             <div class="geo-tools">
@@ -12177,6 +12197,10 @@
           if (path) traced.push({ route: r, points: simplify(path) });
         });
 
+        /* Painted whatever layer is on the drawing: the traffic a corridor carries
+           does not depend on which layer is being looked at. */
+        paintFlowTraffic(traced);
+
         if (state.graphView === "heat") {
           drawHeat(svg, grid, traced);
         }
@@ -12386,6 +12410,200 @@
           });
         });
         return { load: load, peak: peak };
+      }
+
+      /* 10/4, 27:00 — "then later on we had the traffic. I don't see it. So, where
+         do I have traffic?"; 28:33 — "for every segment in the flow network, we
+         should see how much flow we account for"; 28:59 — "what is the amount of
+         intensity we have going east-west and how much we have west-east."
+
+         The segments are the corridors the Layout page already draws. Each route is
+         walked a step at a time; a step is either east-west or north-south, and it
+         is credited to the corridor of that orientation it lies in — the one it is
+         travelling along, never both, so a route crossing a junction is not counted
+         twice. A corridor earns a route's trips once, the way a road counts the
+         vehicles that pass over it rather than the distance they cover on it. */
+      function corridorTraffic(traced) {
+        var rows = aisleBands().map(function (b) {
+          return {
+            band: b,
+            vertical: b.runs === "north–south",
+            fwd: 0,
+            back: 0,
+            loaded: 0,
+            empty: 0,
+            total: 0,
+            routes: 0,
+          };
+        });
+
+        /* Bands can overlap where a wide corridor runs into a narrow one. The
+           tightest band holding the step is the corridor it is really in. */
+        function bandFor(x, y, vertical) {
+          var pick = -1;
+          var tight = Infinity;
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i].vertical !== vertical) continue;
+            var r = rows[i].band.run;
+            if (x < r.x - 1e-9 || x > r.x + r.w + 1e-9) continue;
+            if (y < r.y - 1e-9 || y > r.y + r.h + 1e-9) continue;
+            var width = vertical ? r.w : r.h;
+            if (width < tight) {
+              tight = width;
+              pick = i;
+            }
+          }
+          return pick;
+        }
+
+        var off = 0;
+        var all = 0;
+
+        traced.forEach(function (t) {
+          var trips = t.route.trips;
+          if (!(trips > 0)) return;
+          all += trips;
+          var hit = {};
+          var pts = t.points;
+          for (var i = 0; i < pts.length - 1; i++) {
+            var a = pts[i];
+            var b = pts[i + 1];
+            var dx = b.x - a.x;
+            var dy = b.y - a.y;
+            var len = Math.hypot(dx, dy);
+            if (len < 1e-9) continue;
+            var vertical = Math.abs(dy) > Math.abs(dx);
+            var steps = Math.max(1, Math.ceil(len / CELL));
+            for (var k = 0; k < steps; k++) {
+              var at = (k + 0.5) / steps;
+              var found = bandFor(a.x + dx * at, a.y + dy * at, vertical);
+              if (found < 0) continue;
+              /* Eastbound on a corridor that runs east-west, southbound on one
+                 that runs north-south; "back" is the other way along the same
+                 corridor. */
+              var ahead = vertical ? dy > 0 : dx > 0;
+              hit[found + "|" + (ahead ? "f" : "b")] = true;
+              hit[found + "|*"] = true;
+            }
+          }
+          var keys = Object.keys(hit);
+          if (!keys.length) {
+            off += trips;
+            return;
+          }
+          keys.forEach(function (key) {
+            var parts = key.split("|");
+            var row = rows[Number(parts[0])];
+            if (parts[1] === "*") {
+              row.total += trips;
+              row.routes += 1;
+              if (t.route.kind === "empty") row.empty += trips;
+              else row.loaded += trips;
+              return;
+            }
+            if (parts[1] === "f") row.fwd += trips;
+            else row.back += trips;
+          });
+        });
+
+        return { rows: rows, off: off, all: all };
+      }
+
+      function paintFlowTraffic(traced) {
+        var table = document.getElementById("flow-traffic-grid");
+        var note = document.getElementById("flow-traffic-note");
+        if (!table) return;
+        while (table.firstChild) table.removeChild(table.firstChild);
+
+        var measured = corridorTraffic(traced);
+        var live = measured.rows.filter(function (r) {
+          return r.total > 0;
+        });
+
+        var thead = el("thead");
+        var head = el("tr");
+        [
+          "Segment",
+          "Runs",
+          "Length",
+          "Width",
+          "Eastbound / southbound",
+          "Westbound / northbound",
+          "Loaded",
+          "Empty",
+          "Total",
+        ].forEach(function (label, i) {
+          head.appendChild(
+            el("th", { class: i === 0 ? "corner" : "", text: label }),
+          );
+        });
+        thead.appendChild(head);
+        table.appendChild(thead);
+
+        var tbody = el("tbody");
+        live
+          .slice()
+          .sort(function (a, b) {
+            return b.total - a.total;
+          })
+          .forEach(function (row, i) {
+            var run = row.band.run;
+            var tr = el("tr");
+            tr.appendChild(
+              el("td", { class: "rowhead", text: "Segment " + (i + 1) }),
+            );
+            tr.appendChild(el("td", { class: "total", text: row.band.runs }));
+            tr.appendChild(
+              el("td", {
+                class: "total",
+                text: inUnits(row.vertical ? run.h : run.w, 1),
+              }),
+            );
+            tr.appendChild(
+              el("td", {
+                class: "total",
+                text: inUnits(row.vertical ? run.w : run.h, 1),
+              }),
+            );
+            tr.appendChild(
+              el("td", { class: "total", text: String(Math.round(row.fwd)) }),
+            );
+            tr.appendChild(
+              el("td", { class: "total", text: String(Math.round(row.back)) }),
+            );
+            tr.appendChild(
+              el("td", { class: "total", text: String(Math.round(row.loaded)) }),
+            );
+            tr.appendChild(
+              el("td", { class: "total", text: String(Math.round(row.empty)) }),
+            );
+            tr.appendChild(
+              el("td", { class: "total", text: String(Math.round(row.total)) }),
+            );
+            tbody.appendChild(tr);
+          });
+        table.appendChild(tbody);
+
+        if (!note) return;
+        if (!measured.all) {
+          note.textContent =
+            "No trips to account for yet — enter flows above and the traffic each corridor carries appears here.";
+          return;
+        }
+        var carried = measured.all - measured.off;
+        note.textContent =
+          "The two direction columns are the two ways traffic runs along that corridor: on an east–west corridor they are eastbound and westbound; on a north–south one, southbound and northbound. " +
+          Math.round(carried) +
+          " of " +
+          Math.round(measured.all) +
+          " trips are accounted for by " +
+          live.length +
+          (live.length === 1 ? " corridor" : " corridors") +
+          (measured.off > 0
+            ? "; " +
+              Math.round(measured.off) +
+              " run only through gaps too small to be a corridor of their own."
+            : ".");
       }
 
       function drawHeat(svg, grid, traced) {
@@ -13510,7 +13728,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005021223";
+      window.__BUILD__ = "20261005025406";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
