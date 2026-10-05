@@ -5446,12 +5446,16 @@
         gaps.forEach(function (g) {
           var t = aisleTier(g.gap);
           if (t.lanes < 2) return;
-          var lane = state.laneWidth > 0 ? state.laneWidth : 2;
           var vertical = g.runs === "north–south";
           var span = vertical ? g.run.w : g.run.h;
-          var spare = (span - t.lanes * lane) / 2;
+          /* "Two lanes, but the lanes are wider. And that's by design." How many
+             lanes an aisle has is set by the traffic it must take; how wide each
+             one is follows from the aisle it has to fit. So the lanes divide the
+             whole width between them rather than sitting a standard width apart
+             with the remainder left over at the edges. */
+          var each = span / t.lanes;
           for (var k = 1; k < t.lanes; k++) {
-            var at = spare + k * lane;
+            var at = k * each;
             layer.appendChild(
               svgEl("line", {
                 class: "lane-divider",
@@ -12409,7 +12413,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261004235802";
+      window.__BUILD__ = "20261005000935";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
