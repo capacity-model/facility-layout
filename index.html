@@ -1881,6 +1881,7 @@
           </div>
           <p class="note" id="gap-note"></p>
           <p class="note" id="gap-escape"></p>
+          <p class="note" id="gap-docks"></p>
 
           <div class="kinds">
             <h3>Center types</h3>
@@ -5446,6 +5447,36 @@
               : "Every one of them takes at least a walking lane.");
         }
 
+        var docks = document.getElementById("gap-docks");
+        if (docks) {
+          var short = docksWithoutAisle();
+          if (!short.length) {
+            docks.textContent =
+              "Every I/O station has at least a lane's worth of room in front of it, so a vehicle can reach every dock.";
+          } else {
+            var named = short.map(function (e) {
+              return (
+                e.c.id +
+                " " +
+                e.st.id +
+                " (" +
+                inUnits(e.depth, 2) +
+                (e.walkable ? "" : ", not even walkable") +
+                ")"
+              );
+            });
+            docks.textContent =
+              short.length +
+              (short.length === 1
+                ? " I/O station has no aisle on the side it sits on: "
+                : " I/O stations have no aisle on the side they sit on: ") +
+              named.join(", ") +
+              ". A dock needs " +
+              inUnits(short[0].needs, 2) +
+              " in front of it for a vehicle to stand there.";
+          }
+        }
+
         var escape = document.getElementById("gap-escape");
         if (escape) {
           var through = throughAisles();
@@ -5535,6 +5566,67 @@
             return false;
         }
         return true;
+      }
+
+      /* 10/7 — "aisles are missing as there are several I/O stations on center
+         sides with no aisles."
+
+         A station is a dock: a vehicle has to be able to stand at it and leave
+         again. So what matters is not whether a corridor is listed somewhere near,
+         but how deep the free space in front of that face actually runs. Measured
+         straight out from the station until a center or the far wall stops it. */
+      function dockDepth(at) {
+        var B = state.building;
+        var step = CELL;
+        var half = CELL / 2;
+        var depth = 0;
+        for (var k = 0; k < 400; k++) {
+          var d = depth + step;
+          var x0, y0, x1, y1;
+          if (at.ny !== 0) {
+            x0 = at.x - half;
+            x1 = at.x + half;
+            y0 = at.ny < 0 ? at.y - d : at.y;
+            y1 = at.ny < 0 ? at.y : at.y + d;
+          } else {
+            y0 = at.y - half;
+            y1 = at.y + half;
+            x0 = at.nx < 0 ? at.x - d : at.x;
+            x1 = at.nx < 0 ? at.x : at.x + d;
+          }
+          /* Reaching past a wall means the dock opens onto the outside, which is
+             what an outbound station on the building edge is meant to do. */
+          if (x0 < -1e-9 || y0 < -1e-9 || x1 > B.w + 1e-9 || y1 > B.h + 1e-9)
+            return Infinity;
+          if (!freeStrip(x0, y0, x1, y1)) return depth;
+          depth = d;
+        }
+        return depth;
+      }
+
+      /* Every station whose own face has less room in front of it than a vehicle
+         needs. Reported by name, because "several" is not something a designer can
+         act on. */
+      function docksWithoutAisle() {
+        var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+        var walk = state.walkWidth > 0 ? state.walkWidth : 1;
+        var out = [];
+        state.centers.forEach(function (c) {
+          stationsOf(c).forEach(function (st) {
+            var at = stationAt(c, st);
+            var depth = dockDepth(at);
+            if (depth >= lane - 1e-9) return;
+            out.push({
+              c: c,
+              st: st,
+              at: at,
+              depth: depth,
+              needs: lane,
+              walkable: depth >= walk - 1e-9,
+            });
+          });
+        });
+        return out;
       }
 
       function runOut(box, vertical) {
@@ -11435,6 +11527,10 @@
             shifted += moved;
             overreach += separateRects(state.centers, B);
           }
+          /* The centers were resized while the lanes were being sized, so the
+             docks are settled once more against the layout as it finally stands,
+             and then counted: a dock that still has no aisle is reported, not
+             quietly left. */
           var score = measureNow();
           return {
             centers: state.centers.map(serializeCenter),
@@ -13728,7 +13824,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261005025406";
+      window.__BUILD__ = "20261008140859";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
