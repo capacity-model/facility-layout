@@ -1097,6 +1097,13 @@
         width: 18px;
       }
 
+      .aisle-key i.tightrule {
+        height: 0;
+        border: 0;
+        border-top: 1px dotted #d9534f;
+        width: 18px;
+      }
+
       .aisle-key i.walkrule {
         height: 0;
         border: 0;
@@ -5597,9 +5604,7 @@
         host.appendChild(esc);
 
         var tight = el("span");
-        var red = el("i");
-        red.style.background = AISLE_TIER[0].fill;
-        red.style.borderColor = AISLE_TIER[0].stroke;
+        var red = el("i", { class: "tightrule" });
         tight.appendChild(red);
         tight.appendChild(document.createTextNode("too narrow for one"));
         host.appendChild(tight);
@@ -5755,8 +5760,8 @@
               y: g.run.y - lift,
               width: g.run.w + lift * 2,
               height: g.run.h + lift * 2,
-              fill: rank.i === 0 ? tier.fill : "none",
-              stroke: rank.i === 0 ? tier.stroke : "none",
+              fill: "none",
+              stroke: "none",
               "stroke-width": 1,
               "vector-effect": "non-scaling-stroke",
             }),
@@ -5802,17 +5807,21 @@
                nothing there is what made the aisles look missing. It gets one
                line, lighter and finer than a lane, so it reads as a way through on
                foot rather than as a lane that is not there. */
-            if (t.i < 1) return;
+            /* Filling a corridor in would say the opposite of what is meant: a
+               half-metre sliver drawn as a wide red slab reads as a major aisle.
+               One line, in the colour of what it can take — grey for a corridor
+               only a person fits through, red for one that not even a person
+               does — keeps every corridor the same weight on the drawing. */
             var vert = g.runs === "north–south";
             var mid = vert ? g.run.w / 2 : g.run.h / 2;
             layer.appendChild(
               svgEl("line", {
-                class: "walk-divider",
+                class: t.i < 1 ? "tight-divider" : "walk-divider",
                 x1: vert ? g.run.x + mid : g.run.x,
                 y1: vert ? g.run.y : g.run.y + mid,
                 x2: vert ? g.run.x + mid : g.run.x + g.run.w,
                 y2: vert ? g.run.y + g.run.h : g.run.y + mid,
-                stroke: "#9aa7b4",
+                stroke: t.i < 1 ? AISLE_TIER[0].stroke : "#9aa7b4",
                 "stroke-width": 1,
                 "stroke-dasharray": "1 3",
                 "vector-effect": "non-scaling-stroke",
@@ -14067,7 +14076,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009144857";
+      window.__BUILD__ = "20261009145541";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
