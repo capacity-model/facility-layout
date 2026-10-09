@@ -5025,12 +5025,13 @@
         );
 
         state.centers.forEach(function (c) {
+          var seen = drawnBox(c);
           svg.appendChild(
             svgEl("rect", {
-              x: c.x,
-              y: c.y,
-              width: c.w,
-              height: c.h,
+              x: seen.x,
+              y: seen.y,
+              width: seen.w,
+              height: seen.h,
               fill: kindFill(c.kind),
               stroke: PAPER_INK,
               "stroke-width": 1.5,
@@ -5038,8 +5039,8 @@
             }),
           );
           var label = svgEl("text", {
-            x: c.x + 1.2,
-            y: c.y + 3.4,
+            x: seen.x + 1.2,
+            y: seen.y + 3.4,
             fill: PAPER_INK,
             "font-size": 2.8,
             "font-weight": 700,
@@ -5142,16 +5143,10 @@
           });
         }
 
-        /* At true scale the narrow aisles are a hairline, and an aisle you cannot
-           see is one you cannot judge. Drawing each block a little inside its own
-           outline opens every gap by the same amount, so the aisles can be seen
-           and their lanes counted. Only the drawing changes: every distance,
-           score and route still uses the block exactly as specified. */
+        /* The one definition, shared with every other page that draws this same
+           layout, so they cannot drift apart. */
         var lift = state.showAisles ? Math.max(0, state.aisleLift || 0) / 2 : 0;
-        function shown(c) {
-          var d = Math.min(lift, Math.max(0, (Math.min(c.w, c.h) - 1) / 2));
-          return { x: c.x + d, y: c.y + d, w: c.w - 2 * d, h: c.h - 2 * d, d: d };
-        }
+        var shown = drawnBox;
 
         state.centers.forEach(function (c) {
           var group = svgEl("g", {});
@@ -5553,6 +5548,21 @@
          only the white space left over between the blocks; this puts them on the
          page as the thing they are, banded by how much traffic each can take, with
          the crossings marked where two of them meet. */
+      /* At true scale a one-metre aisle is a hairline, and an aisle you cannot see
+         is one you cannot judge, so each block is drawn a little inside its own
+         outline and every gap opens by the same amount. Only the drawing changes:
+         every distance, score and route still uses the block exactly as specified.
+
+         Every page that draws the current layout uses this, so the same layout is
+         the same size whichever tab it is on. The block and net stages do not:
+         a net layout draws its aisles at the width its traffic asks for, and
+         shrinking the blocks there would set the two at odds. */
+      function drawnBox(c) {
+        var lift = state.showAisles ? Math.max(0, state.aisleLift || 0) / 2 : 0;
+        var d = Math.min(lift, Math.max(0, (Math.min(c.w, c.h) - 1) / 2));
+        return { x: c.x + d, y: c.y + d, w: c.w - 2 * d, h: c.h - 2 * d, d: d };
+      }
+
       var AISLE_TIER = [
         { fill: "#fdeceb", stroke: "#d9534f", name: "too narrow" },
         { fill: "#f2f4f7", stroke: "#c3cbd4", name: "walking only" },
@@ -12559,12 +12569,13 @@
           state.graphView === "centers" ? centerIntensity(traced) : null;
         state.centers.forEach(function (c) {
           var share = centerHeat ? centerHeat.share[c.id] || 0 : 0;
+          var seen = drawnBox(c);
           svg.appendChild(
             svgEl("rect", {
-              x: c.x,
-              y: c.y,
-              width: c.w,
-              height: c.h,
+              x: seen.x,
+              y: seen.y,
+              width: seen.w,
+              height: seen.h,
               fill: centerHeat ? heatColour(share) : kindFill(c.kind),
               "fill-opacity": state.graphView === "heat" ? 0.85 : 1,
               stroke: PAPER_INK,
@@ -12573,8 +12584,8 @@
             }),
           );
           var label = svgEl("text", {
-            x: c.x + 0.8,
-            y: c.y + 2.6,
+            x: seen.x + 0.8,
+            y: seen.y + 2.6,
             fill: centerHeat ? heatInk(share) : PAPER_INK,
             "font-size": 2.2,
             "font-weight": 700,
@@ -14076,7 +14087,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009145541";
+      window.__BUILD__ = "20261009151150";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
