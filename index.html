@@ -1097,6 +1097,14 @@
         width: 18px;
       }
 
+      .aisle-key i.dockring {
+        width: 11px;
+        height: 11px;
+        border: 1.5px solid #d9534f;
+        border-radius: 50%;
+        background: none;
+      }
+
       .aisle-key i.tightrule {
         height: 0;
         border: 0;
@@ -5148,6 +5156,12 @@
         var lift = state.showAisles ? Math.max(0, state.aisleLift || 0) / 2 : 0;
         var shown = drawnBox;
 
+        /* Which docks have no aisle on the side they sit on, looked up by name. */
+        var short = {};
+        docksWithoutAisle().forEach(function (e) {
+          short[e.c.id + "." + e.st.id] = e.depth;
+        });
+
         state.centers.forEach(function (c) {
           var group = svgEl("g", {});
           var seen = shown(c);
@@ -5263,6 +5277,28 @@
           stationsOf(c).forEach(function (st) {
             if (!stationDrawn(c, st, used)) return;
             var at = liftTo(stationAt(c, st));
+            /* 10/7 — "several I/O stations on center sides with no aisles."
+               Said in the Aisle check as well, but a dock a vehicle cannot reach
+               should be visible where it is, not only in a sentence underneath. */
+            if (state.showAisles && short[c.id + "." + st.id]) {
+              var ring = svgEl("circle", {
+                class: "dock-short",
+                cx: at.x,
+                cy: at.y,
+                r: 2,
+                fill: "none",
+                stroke: AISLE_TIER[0].stroke,
+                "stroke-width": 1.5,
+                "vector-effect": "non-scaling-stroke",
+              });
+              ring.appendChild(svgEl("title", {}));
+              ring.firstChild.textContent =
+                stationLabel(c, st) +
+                " has " +
+                inUnits(short[c.id + "." + st.id], 2) +
+                " in front of it, less than one lane";
+              group.appendChild(ring);
+            }
             var mark = stationMark(at, st);
             mark.appendChild(svgEl("title", {}));
             mark.firstChild.textContent = stationLabel(c, st) + " station";
@@ -5607,6 +5643,11 @@
         foot.appendChild(el("i", { class: "walkrule" }));
         foot.appendChild(document.createTextNode("walking only, no lane"));
         host.appendChild(foot);
+
+        var dock = el("span");
+        dock.appendChild(el("i", { class: "dockring" }));
+        dock.appendChild(document.createTextNode("I/O station with no aisle"));
+        host.appendChild(dock);
 
         var esc = el("span");
         esc.appendChild(el("i", { class: "escaperule" }));
@@ -14199,7 +14240,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009151915";
+      window.__BUILD__ = "20261009152512";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
