@@ -11668,6 +11668,57 @@
         return depth;
       }
 
+      /* The last resort, when no side of a center has the room a vehicle needs:
+         push whatever stands in front of the dock out of the way. This is the one
+         step that moves a center, so it is the one step that can undo the packing
+         or close the way out — which is why nothing here is kept unless it is
+         checked afterwards and found to have cost nothing. */
+      function pushForDocks(centers, B, width) {
+        var moved = 0;
+        var half = CELL / 2;
+        centers.forEach(function (c) {
+          stationsOf(c).forEach(function (st) {
+            var at = stationAt(c, st);
+            var x0, y0, x1, y1;
+            if (at.ny !== 0) {
+              x0 = at.x - half;
+              x1 = at.x + half;
+              y0 = at.ny < 0 ? at.y - width : at.y;
+              y1 = at.ny < 0 ? at.y : at.y + width;
+            } else {
+              y0 = at.y - half;
+              y1 = at.y + half;
+              x0 = at.nx < 0 ? at.x - width : at.x;
+              x1 = at.nx < 0 ? at.x : at.x + width;
+            }
+            /* A dock on the building edge opens onto the outside already. */
+            if (x0 < -1e-9 || y0 < -1e-9 || x1 > B.w + 1e-9 || y1 > B.h + 1e-9)
+              return;
+            centers.forEach(function (o) {
+              if (o === c) return;
+              if (o.x >= x1 - 1e-6 || o.x + o.w <= x0 + 1e-6) return;
+              if (o.y >= y1 - 1e-6 || o.y + o.h <= y0 + 1e-6) return;
+              var shift;
+              if (at.ny < 0) {
+                shift = y0 - (o.y + o.h);
+                o.y += shift;
+              } else if (at.ny > 0) {
+                shift = y1 - o.y;
+                o.y += shift;
+              } else if (at.nx < 0) {
+                shift = x0 - (o.x + o.w);
+                o.x += shift;
+              } else {
+                shift = x1 - o.x;
+                o.x += shift;
+              }
+              moved += Math.abs(shift);
+            });
+          });
+        });
+        return moved;
+      }
+
       function netCandidate(blockCand) {
         var centers = netCenters(blockCand);
         var keep = state.centers;
@@ -11766,31 +11817,92 @@
              clear; the layout is then routed again, and the slide is kept only if
              it leaves no trip worse off than it was. A dock a vehicle can reach is
              worth nothing if the vehicle can no longer get there. */
-          var keptAt = state.centers.map(function (c) {
-            return stationsOf(c).map(function (st) {
-              return st.t;
-            });
-          });
-          if (slideDocks(state.centers, B) > 0) {
-            var tryGrid = buildGrid();
-            var tryRoutes = flowRoutes();
-            var tryTraced = [];
-            tryRoutes.forEach(function (r) {
-              var path = aislePath(tryGrid, r.from, r.to);
-              if (path) tryTraced.push({ route: r, points: simplify(path) });
-            });
-            if (tryTraced.length >= traced.length) {
-              grid = tryGrid;
-              routes = tryRoutes;
-              traced = tryTraced;
-              aisles = mergeSegments(extractAisles(grid, traced), grid);
-              junctions = aisleTraffic(grid, traced, aisles);
-            } else {
-              state.centers.forEach(function (c, i) {
-                stationsOf(c).forEach(function (st, k) {
-                  st.t = keptAt[i][k];
+          var laneNow = state.laneWidth > 0 ? state.laneWidth : 2;
+
+          /* Everything below is tried, then measured, then kept or undone. A dock
+             a vehicle can reach is worth nothing if the vehicle can no longer get
+             there, or if the way out has been built over to make room for it. */
+          function snapshot() {
+            return {
+              centers: state.centers.map(function (c) {
+                return { c: c, x: c.x, y: c.y, w: c.w, h: c.h };
+              }),
+              docks: state.centers.map(function (c) {
+                return stationsOf(c).map(function (st) {
+                  return { st: st, t: st.t, edge: st.edge };
                 });
+              }),
+            };
+          }
+          function restore(was) {
+            was.centers.forEach(function (m) {
+              m.c.x = m.x;
+              m.c.y = m.y;
+              m.c.w = m.w;
+              m.c.h = m.h;
+            });
+            was.docks.forEach(function (list) {
+              list.forEach(function (m) {
+                m.st.t = m.t;
+                m.st.edge = m.edge;
               });
+            });
+          }
+          function reroute() {
+            var g = buildGrid();
+            var rs = flowRoutes();
+            var tr = [];
+            rs.forEach(function (r) {
+              var path = aislePath(g, r.from, r.to);
+              if (path) tr.push({ route: r, points: simplify(path) });
+            });
+            return { grid: g, routes: rs, traced: tr };
+          }
+          function take(got) {
+            grid = got.grid;
+            routes = got.routes;
+            traced = got.traced;
+            aisles = mergeSegments(extractAisles(grid, traced), grid);
+            junctions = aisleTraffic(grid, traced, aisles);
+          }
+
+          var shortNow = docksWithoutAisle().length;
+          var waysNow = throughAisles().length;
+
+          /* First, move nothing but the docks themselves. */
+          var was = snapshot();
+          if (slideDocks(state.centers, B) > 0) {
+            var got = reroute();
+            var short1 = docksWithoutAisle().length;
+            if (got.traced.length >= traced.length && short1 <= shortNow) {
+              take(got);
+              shortNow = short1;
+            } else {
+              restore(was);
+            }
+          }
+
+          /* Only if docks are still walled in: push what stands in front of them,
+             and keep it only if the trips, the ways out and the docks are all no
+             worse than they were. */
+          if (shortNow > 0) {
+            was = snapshot();
+            if (pushForDocks(state.centers, B, laneNow) > 0) {
+              separateRects(state.centers, B);
+              if (state.keepWayOut) carveWayOut(state.centers, B, laneNow);
+              slideDocks(state.centers, B);
+              var after = reroute();
+              var short2 = docksWithoutAisle().length;
+              var ways2 = throughAisles().length;
+              if (
+                after.traced.length >= traced.length &&
+                ways2 >= waysNow &&
+                short2 < shortNow
+              ) {
+                take(after);
+              } else {
+                restore(was);
+              }
             }
           }
           var score = measureNow();
@@ -14087,7 +14199,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009151150";
+      window.__BUILD__ = "20261009151915";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
