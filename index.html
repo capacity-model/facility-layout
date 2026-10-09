@@ -11503,6 +11503,112 @@
         return moved;
       }
 
+      /* 10/7 — "aisles are missing as there are several I/O stations on center
+         sides with no aisles."
+
+         A dock is only a dock if a vehicle can stand at it. Where the face a
+         station was put on is blocked, the station slides along that same face to
+         where the floor is actually clear. It keeps the side it was given, which
+         is the design decision, and gives up only its position along that side,
+         which is not. No center moves, so this can neither unpack the layout nor
+         close the way out. */
+      function slideDocks(centers, B) {
+        var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+        var moved = 0;
+        centers.forEach(function (c) {
+          stationsOf(c).forEach(function (st) {
+            var here = dockRoom(c, st, st.t, B, centers);
+            if (here >= lane - 1e-9) return;
+            var span = st.edge === "top" || st.edge === "bottom" ? c.w : c.h;
+            var steps = Math.max(2, Math.round(span / CELL));
+            var best = { t: st.t, room: here };
+            for (var k = 0; k <= steps; k++) {
+              var t = k / steps;
+              if (t < 0.02 || t > 0.98) continue;
+              var room = dockRoom(c, st, t, B, centers);
+              /* More room wins; between two spots with enough room, the nearer
+                 one, so a station that has to move moves as little as it can. */
+              var better =
+                room > best.room + 1e-9 ||
+                (room >= lane - 1e-9 &&
+                  best.room >= lane - 1e-9 &&
+                  Math.abs(t - st.t) < Math.abs(best.t - st.t));
+              if (better) best = { t: t, room: room };
+            }
+            if (best.room < lane - 1e-9) {
+              /* The whole face is walled in, so sliding along it cannot help. The
+                 last resort is another side of the same center — a dock has to be
+                 somewhere a vehicle can reach, and a side with no aisle on it is
+                 not a side. The side it was given is tried first and kept unless
+                 another one is genuinely clear. */
+              ["top", "bottom", "left", "right"].forEach(function (edge) {
+                if (edge === st.edge) return;
+                var other = edge === "top" || edge === "bottom" ? c.w : c.h;
+                var ticks = Math.max(2, Math.round(other / CELL));
+                for (var j = 0; j <= ticks; j++) {
+                  var u = j / ticks;
+                  if (u < 0.02 || u > 0.98) continue;
+                  var room = dockRoom(c, { edge: edge, t: u }, u, B, centers);
+                  if (room > best.room + 1e-9)
+                    best = { t: u, room: room, edge: edge };
+                }
+              });
+            }
+            if (best.edge && best.edge !== st.edge) {
+              st.edge = best.edge;
+              st.t = best.t;
+              moved += span;
+              return;
+            }
+            if (best.t !== st.t) {
+              moved += Math.abs(best.t - st.t) * span;
+              st.t = best.t;
+            }
+          });
+        });
+        return moved;
+      }
+
+      /* How deep the clear floor runs straight out from where a station would sit
+         at position t along its face. */
+      function dockRoom(c, st, t, B, centers) {
+        var at = stationAt(c, { edge: st.edge, t: t });
+        var half = CELL / 2;
+        var depth = 0;
+        for (var k = 0; k < 400; k++) {
+          var d = depth + CELL;
+          var x0, y0, x1, y1;
+          if (at.ny !== 0) {
+            x0 = at.x - half;
+            x1 = at.x + half;
+            y0 = at.ny < 0 ? at.y - d : at.y;
+            y1 = at.ny < 0 ? at.y : at.y + d;
+          } else {
+            y0 = at.y - half;
+            y1 = at.y + half;
+            x0 = at.nx < 0 ? at.x - d : at.x;
+            x1 = at.nx < 0 ? at.x : at.x + d;
+          }
+          /* A dock on the building edge opens onto the outside, which is all the
+             room there is and all it needs. */
+          if (x0 < -1e-9 || y0 < -1e-9 || x1 > B.w + 1e-9 || y1 > B.h + 1e-9)
+            return Infinity;
+          for (var i = 0; i < centers.length; i++) {
+            var o = centers[i];
+            if (o === c) continue;
+            if (
+              o.x < x1 - 1e-6 &&
+              o.x + o.w > x0 + 1e-6 &&
+              o.y < y1 - 1e-6 &&
+              o.y + o.h > y0 + 1e-6
+            )
+              return depth;
+          }
+          depth = d;
+        }
+        return depth;
+      }
+
       function netCandidate(blockCand) {
         var centers = netCenters(blockCand);
         var keep = state.centers;
@@ -11596,6 +11702,38 @@
              docks are settled once more against the layout as it finally stands,
              and then counted: a dock that still has no aisle is reported, not
              quietly left. */
+          /* The docks last, and only if they cost nothing. A station walled in by
+             the resizing above slides along its own face to where the floor is
+             clear; the layout is then routed again, and the slide is kept only if
+             it leaves no trip worse off than it was. A dock a vehicle can reach is
+             worth nothing if the vehicle can no longer get there. */
+          var keptAt = state.centers.map(function (c) {
+            return stationsOf(c).map(function (st) {
+              return st.t;
+            });
+          });
+          if (slideDocks(state.centers, B) > 0) {
+            var tryGrid = buildGrid();
+            var tryRoutes = flowRoutes();
+            var tryTraced = [];
+            tryRoutes.forEach(function (r) {
+              var path = aislePath(tryGrid, r.from, r.to);
+              if (path) tryTraced.push({ route: r, points: simplify(path) });
+            });
+            if (tryTraced.length >= traced.length) {
+              grid = tryGrid;
+              routes = tryRoutes;
+              traced = tryTraced;
+              aisles = mergeSegments(extractAisles(grid, traced), grid);
+              junctions = aisleTraffic(grid, traced, aisles);
+            } else {
+              state.centers.forEach(function (c, i) {
+                stationsOf(c).forEach(function (st, k) {
+                  st.t = keptAt[i][k];
+                });
+              });
+            }
+          }
           var score = measureNow();
           return {
             centers: state.centers.map(serializeCenter),
@@ -13889,7 +14027,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009141856";
+      window.__BUILD__ = "20261009142907";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
