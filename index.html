@@ -1097,6 +1097,13 @@
         width: 18px;
       }
 
+      .aisle-key i.escaperule {
+        height: 0;
+        border: 0;
+        border-top: 2px dashed #1f8a4c;
+        width: 18px;
+      }
+
       .aisle-key i.crossbox {
         background: #dce9f7;
         border-color: #5b8cc0;
@@ -5343,21 +5350,54 @@
       }
 
       /* "You need to have aisles that will allow to cross the building and get
-         out of the building — if there's a fire, for example." An aisle that
-         reaches a wall at both ends is a way out; one that stops short of either
-         is not, however wide it is. */
+         out of the building — if there's a fire, for example."
+
+         10/7 — "what you mention about the security aisles does not seem to be
+         operational." It was, in the generated layouts; the page could not see it.
+         A way out was looked for among the corridors between facing pairs of
+         centers, and a strip running along a wall has only one center beside it,
+         so it never became a corridor and was never counted. A way out does not
+         need a center on both sides: it is any strip of floor the centers leave
+         clear from one wall to the other, so that is what is looked for now —
+         the gaps in the ground the centers cover, taken across the whole span. */
       function throughAisles() {
         var B = state.building;
         var lane = state.laneWidth > 0 ? state.laneWidth : 2;
         var walk = state.walkWidth > 0 ? state.walkWidth : 1;
-        return aisleBands().filter(function (g) {
-          var wide = (g.runs === "north–south" ? g.run.w : g.run.h) >= walk - 1e-9;
-          if (!wide) return false;
-          void lane;
-          return g.runs === "north–south"
-            ? g.run.y <= 1e-6 && g.run.y + g.run.h >= B.h - 1e-6
-            : g.run.x <= 1e-6 && g.run.x + g.run.w >= B.w - 1e-6;
-        });
+
+        function crossing(vertical) {
+          var end = vertical ? B.w : B.h;
+          var spans = state.centers
+            .map(function (c) {
+              return vertical ? [c.x, c.x + c.w] : [c.y, c.y + c.h];
+            })
+            .sort(function (m, n) {
+              return m[0] - n[0];
+            });
+          var gaps = [];
+          var at = 0;
+          spans.forEach(function (sp) {
+            if (sp[0] > at + 1e-9) gaps.push([at, Math.min(sp[0], end)]);
+            if (sp[1] > at) at = sp[1];
+          });
+          if (at < end - 1e-9) gaps.push([at, end]);
+          return gaps
+            .filter(function (g) {
+              return g[1] - g[0] >= walk - 1e-9;
+            })
+            .map(function (g) {
+              return {
+                runs: vertical ? "north–south" : "east–west",
+                gap: g[1] - g[0],
+                run: vertical
+                  ? { x: g[0], y: 0, w: g[1] - g[0], h: B.h }
+                  : { x: 0, y: g[0], w: B.w, h: g[1] - g[0] },
+              };
+            });
+        }
+
+        void lane;
+        return crossing(false).concat(crossing(true));
       }
 
       function renderGaps() {
@@ -5538,6 +5578,11 @@
         cross.appendChild(box);
         cross.appendChild(document.createTextNode("intersection"));
         host.appendChild(cross);
+
+        var esc = el("span");
+        esc.appendChild(el("i", { class: "escaperule" }));
+        esc.appendChild(document.createTextNode("way out of the building"));
+        host.appendChild(esc);
 
         var tight = el("span");
         var red = el("i");
@@ -5761,6 +5806,26 @@
               }),
             );
           }
+        });
+
+        /* The ways out, marked as what they are. Outlined rather than filled, and
+           drawn last, so a strip that crosses the building can be picked out at a
+           glance without hiding what is under it. */
+        throughAisles().forEach(function (g) {
+          layer.appendChild(
+            svgEl("rect", {
+              class: "aisle-escape",
+              x: g.run.x,
+              y: g.run.y,
+              width: g.run.w,
+              height: g.run.h,
+              fill: "none",
+              stroke: "#1f8a4c",
+              "stroke-width": 2,
+              "stroke-dasharray": "6 4",
+              "vector-effect": "non-scaling-stroke",
+            }),
+          );
         });
 
         svg.appendChild(layer);
@@ -13824,7 +13889,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261008140859";
+      window.__BUILD__ = "20261009141856";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
