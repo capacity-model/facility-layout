@@ -1097,6 +1097,13 @@
         width: 18px;
       }
 
+      .aisle-key i.walkrule {
+        height: 0;
+        border: 0;
+        border-top: 1px dotted #9aa7b4;
+        width: 18px;
+      }
+
       .aisle-key i.escaperule {
         height: 0;
         border: 0;
@@ -5579,6 +5586,11 @@
         cross.appendChild(document.createTextNode("intersection"));
         host.appendChild(cross);
 
+        var foot = el("span");
+        foot.appendChild(el("i", { class: "walkrule" }));
+        foot.appendChild(document.createTextNode("walking only, no lane"));
+        host.appendChild(foot);
+
         var esc = el("span");
         esc.appendChild(el("i", { class: "escaperule" }));
         esc.appendChild(document.createTextNode("way out of the building"));
@@ -5729,16 +5741,22 @@
         var ns = [];
         var ew = [];
 
+        /* 10/7 — "aisles are missing as there are several I/O stations on center
+           sides with no aisles." They were not missing; they were invisible. The
+           tier index was read off the tier itself, which does not carry it, so the
+           test for "too narrow" never once came out true and a corridor no vehicle
+           could use was drawn as blank floor. */
         gaps.forEach(function (g) {
-          var tier = AISLE_TIER[aisleTier(g.gap).i];
+          var rank = aisleTier(g.gap);
+          var tier = AISLE_TIER[rank.i];
           layer.appendChild(
             svgEl("rect", {
               x: g.run.x - lift,
               y: g.run.y - lift,
               width: g.run.w + lift * 2,
               height: g.run.h + lift * 2,
-              fill: tier.i === 0 ? tier.fill : "none",
-              stroke: tier.i === 0 ? tier.stroke : "none",
+              fill: rank.i === 0 ? tier.fill : "none",
+              stroke: rank.i === 0 ? tier.stroke : "none",
               "stroke-width": 1,
               "vector-effect": "non-scaling-stroke",
             }),
@@ -5779,7 +5797,29 @@
            clear, not a stretch to travel along. */
         gaps.forEach(function (g) {
           var t = aisleTier(g.gap);
-          if (t.lanes < 1) return;
+          if (t.lanes < 1) {
+            /* A corridor too narrow for a vehicle is still a corridor, and drawing
+               nothing there is what made the aisles look missing. It gets one
+               line, lighter and finer than a lane, so it reads as a way through on
+               foot rather than as a lane that is not there. */
+            if (t.i < 1) return;
+            var vert = g.runs === "north–south";
+            var mid = vert ? g.run.w / 2 : g.run.h / 2;
+            layer.appendChild(
+              svgEl("line", {
+                class: "walk-divider",
+                x1: vert ? g.run.x + mid : g.run.x,
+                y1: vert ? g.run.y : g.run.y + mid,
+                x2: vert ? g.run.x + mid : g.run.x + g.run.w,
+                y2: vert ? g.run.y + g.run.h : g.run.y + mid,
+                stroke: "#9aa7b4",
+                "stroke-width": 1,
+                "stroke-dasharray": "1 3",
+                "vector-effect": "non-scaling-stroke",
+              }),
+            );
+            return;
+          }
           var vertical = g.runs === "north–south";
           var span = vertical ? g.run.w : g.run.h;
           /* "Two lanes, but the lanes are wider. And that's by design." How many
@@ -14027,7 +14067,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009142907";
+      window.__BUILD__ = "20261009144857";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
