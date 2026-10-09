@@ -1097,14 +1097,6 @@
         width: 18px;
       }
 
-      .aisle-key i.dockring {
-        width: 11px;
-        height: 11px;
-        border: 1.5px solid #d9534f;
-        border-radius: 50%;
-        background: none;
-      }
-
       .aisle-key i.tightrule {
         height: 0;
         border: 0;
@@ -1911,6 +1903,10 @@
           <p class="note" id="gap-note"></p>
           <p class="note" id="gap-escape"></p>
           <p class="note" id="gap-docks"></p>
+          <div class="geo-tools">
+            <button id="serve-docks" type="button">Make room at every dock</button>
+            <span class="case-note" id="serve-docks-note"></span>
+          </div>
 
           <div class="kinds">
             <h3>Center types</h3>
@@ -5156,12 +5152,6 @@
         var lift = state.showAisles ? Math.max(0, state.aisleLift || 0) / 2 : 0;
         var shown = drawnBox;
 
-        /* Which docks have no aisle on the side they sit on, looked up by name. */
-        var short = {};
-        docksWithoutAisle().forEach(function (e) {
-          short[e.c.id + "." + e.st.id] = e.depth;
-        });
-
         state.centers.forEach(function (c) {
           var group = svgEl("g", {});
           var seen = shown(c);
@@ -5277,28 +5267,6 @@
           stationsOf(c).forEach(function (st) {
             if (!stationDrawn(c, st, used)) return;
             var at = liftTo(stationAt(c, st));
-            /* 10/7 — "several I/O stations on center sides with no aisles."
-               Said in the Aisle check as well, but a dock a vehicle cannot reach
-               should be visible where it is, not only in a sentence underneath. */
-            if (state.showAisles && short[c.id + "." + st.id]) {
-              var ring = svgEl("circle", {
-                class: "dock-short",
-                cx: at.x,
-                cy: at.y,
-                r: 2,
-                fill: "none",
-                stroke: AISLE_TIER[0].stroke,
-                "stroke-width": 1.5,
-                "vector-effect": "non-scaling-stroke",
-              });
-              ring.appendChild(svgEl("title", {}));
-              ring.firstChild.textContent =
-                stationLabel(c, st) +
-                " has " +
-                inUnits(short[c.id + "." + st.id], 2) +
-                " in front of it, less than one lane";
-              group.appendChild(ring);
-            }
             var mark = stationMark(at, st);
             mark.appendChild(svgEl("title", {}));
             mark.firstChild.textContent = stationLabel(c, st) + " station";
@@ -5643,11 +5611,6 @@
         foot.appendChild(el("i", { class: "walkrule" }));
         foot.appendChild(document.createTextNode("walking only, no lane"));
         host.appendChild(foot);
-
-        var dock = el("span");
-        dock.appendChild(el("i", { class: "dockring" }));
-        dock.appendChild(document.createTextNode("I/O station with no aisle"));
-        host.appendChild(dock);
 
         var esc = el("span");
         esc.appendChild(el("i", { class: "escaperule" }));
@@ -7161,6 +7124,58 @@
           /* A drawing setting: nothing is measured or scored again. */
           buildLayout();
         });
+
+      /* 10/7 — "aisles are missing as there are several I/O stations on center
+         sides with no aisles." On a layout the designer drew, the aisle is made
+         when they ask for it, not behind their back: the station slides along its
+         own face first, moves to another side of the same center if the whole
+         face is walled in, and only then is whatever stands in front of it pushed
+         clear. */
+      document.getElementById("serve-docks").addEventListener("click", function () {
+        var note = document.getElementById("serve-docks-note");
+        var B = state.building;
+        var lane = state.laneWidth > 0 ? state.laneWidth : 2;
+        var before = docksWithoutAisle().length;
+        if (!before) {
+          note.textContent = "Every dock already has its aisle.";
+          return;
+        }
+        if (
+          !window.confirm(
+            before +
+              (before === 1
+                ? " I/O station has no aisle on the side it sits on. "
+                : " I/O stations have no aisle on the side they sit on. ") +
+              "Make room for them? Stations move along their own center first; " +
+              "centers are only pushed aside where nothing else will do.",
+          )
+        )
+          return;
+
+        slideDocks(state.centers, B);
+        var left = docksWithoutAisle().length;
+        var shoved = 0;
+        if (left) {
+          shoved = pushForDocks(state.centers, B, lane);
+          separateRects(state.centers, B);
+          slideDocks(state.centers, B);
+          left = docksWithoutAisle().length;
+        }
+        buildLayout();
+        renderGeoTable();
+        evaluate();
+        saveGeometry();
+        note.textContent =
+          before -
+          left +
+          " of " +
+          before +
+          " given their aisle" +
+          (shoved > 0 ? ", with centers pushed aside to do it" : "") +
+          (left
+            ? "; " + left + " could not be served without taking the layout apart."
+            : ". Reset to Layout 0 puts the original back.");
+      });
 
       document.getElementById("reset-geo").addEventListener("click", function () {
         /* cloneGeometry hands back the shipped shape, where a center carries an I
@@ -14240,7 +14255,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009152512";
+      window.__BUILD__ = "20261009153659";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
