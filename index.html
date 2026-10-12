@@ -5906,11 +5906,18 @@
           for (var j = i + 1; j < state.centers.length; j++) {
             var a = state.centers[i],
               b = state.centers[j];
+            /* Two centers that touch share an edge and no floor, which is a
+               layout with no aisle between them, not a layout that is broken.
+               Pushing centers apart is done in fractions of a cell and leaves a
+               fraction of a millimetre behind; calling that an overlap tells the
+               designer to fix something that is not there, so anything under a
+               millimetre is treated as touching. */
+            var eps = 1e-3;
             var hit =
-              a.x < b.x + b.w &&
-              b.x < a.x + a.w &&
-              a.y < b.y + b.h &&
-              b.y < a.y + a.h;
+              a.x < b.x + b.w - eps &&
+              b.x < a.x + a.w - eps &&
+              a.y < b.y + b.h - eps &&
+              b.y < a.y + a.h - eps;
             if (hit) problems.push(a.id + " and " + b.id + " overlap.");
           }
         }
@@ -7181,21 +7188,24 @@
         }
 
         /* The ways out come after, because clearing one shifts the centers beside
-           it and can wall a dock back in; the docks are settled again afterwards,
-           and the way out gets the last word. */
+           it and can wall a dock back in. Carving and separating take turns until
+           they agree, and separating has the last word: a way out bought by laying
+           one center on top of another is not a layout. Whatever survives is what
+           gets reported. */
         if (waysBefore < wantWays) {
-          for (var round = 0; round < 3; round++) {
+          for (var round = 0; round < 6; round++) {
             shoved += carveWayOut(state.centers, B, lane);
-            separateRects(state.centers, B);
+            separateRects(state.centers, B, 40);
+            slideDocks(state.centers, B);
+            if (throughAisles().length >= wantWays) break;
           }
-          shoved += carveWayOut(state.centers, B, lane);
-          slideDocks(state.centers, B);
           if (docksWithoutAisle().length) {
             shoved += pushForDocks(state.centers, B, lane);
-            separateRects(state.centers, B);
-            carveWayOut(state.centers, B, lane);
+            separateRects(state.centers, B, 40);
             slideDocks(state.centers, B);
           }
+          separateRects(state.centers, B, 40);
+          slideDocks(state.centers, B);
           left = docksWithoutAisle().length;
         }
 
@@ -14303,7 +14313,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261012132826";
+      window.__BUILD__ = "20261012133953";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
