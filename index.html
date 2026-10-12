@@ -7136,18 +7136,36 @@
         var B = state.building;
         var lane = state.laneWidth > 0 ? state.laneWidth : 2;
         var before = docksWithoutAisle().length;
-        if (!before) {
-          note.textContent = "Every dock already has its aisle.";
+        /* "You need to have aisles that will allow to cross the building and get
+           out of the building — if there's a fire, for example." The two go
+           together: a dock a vehicle can reach, and a way out it can leave by, are
+           both aisles the layout has to provide, so one button provides both. */
+        var waysBefore = throughAisles().length;
+        var wantWays = state.keepWayOut ? 2 : 0;
+        if (!before && waysBefore >= wantWays) {
+          note.textContent =
+            "Every dock already has its aisle, and the building already has its ways out.";
           return;
         }
-        if (
-          !window.confirm(
+        var asks = [];
+        if (before)
+          asks.push(
             before +
               (before === 1
-                ? " I/O station has no aisle on the side it sits on. "
-                : " I/O stations have no aisle on the side they sit on. ") +
-              "Make room for them? Stations move along their own center first; " +
-              "centers are only pushed aside where nothing else will do.",
+                ? " I/O station has no aisle on the side it sits on"
+                : " I/O stations have no aisle on the side they sit on"),
+          );
+        if (waysBefore < wantWays)
+          asks.push(
+            waysBefore
+              ? "only " + waysBefore + " aisle crosses the building wall to wall"
+              : "no aisle crosses the building wall to wall",
+          );
+        if (
+          !window.confirm(
+            asks.join(", and ") +
+              ". Make room? Stations move along their own center first; centers " +
+              "are only pushed aside where nothing else will do.",
           )
         )
           return;
@@ -7156,24 +7174,54 @@
         var left = docksWithoutAisle().length;
         var shoved = 0;
         if (left) {
-          shoved = pushForDocks(state.centers, B, lane);
+          shoved += pushForDocks(state.centers, B, lane);
           separateRects(state.centers, B);
           slideDocks(state.centers, B);
           left = docksWithoutAisle().length;
         }
+
+        /* The ways out come after, because clearing one shifts the centers beside
+           it and can wall a dock back in; the docks are settled again afterwards,
+           and the way out gets the last word. */
+        if (waysBefore < wantWays) {
+          for (var round = 0; round < 3; round++) {
+            shoved += carveWayOut(state.centers, B, lane);
+            separateRects(state.centers, B);
+          }
+          shoved += carveWayOut(state.centers, B, lane);
+          slideDocks(state.centers, B);
+          if (docksWithoutAisle().length) {
+            shoved += pushForDocks(state.centers, B, lane);
+            separateRects(state.centers, B);
+            carveWayOut(state.centers, B, lane);
+            slideDocks(state.centers, B);
+          }
+          left = docksWithoutAisle().length;
+        }
+
         buildLayout();
         renderGeoTable();
         evaluate();
         saveGeometry();
+
+        var waysNow = throughAisles().length;
+        var said = [];
+        if (before)
+          said.push(before - left + " of " + before + " docks given their aisle");
+        if (wantWays)
+          said.push(
+            waysNow
+              ? waysNow +
+                  (waysNow === 1
+                    ? " aisle now crosses the building wall to wall"
+                    : " aisles now cross the building wall to wall")
+              : "still no aisle crosses the building",
+          );
         note.textContent =
-          before -
-          left +
-          " of " +
-          before +
-          " given their aisle" +
+          said.join("; ") +
           (shoved > 0 ? ", with centers pushed aside to do it" : "") +
           (left
-            ? "; " + left + " could not be served without taking the layout apart."
+            ? ". " + left + " could not be served without taking the layout apart."
             : ". Reset to Layout 0 puts the original back.");
       });
 
@@ -14255,7 +14303,7 @@
     </script>
 
     <script>
-      window.__BUILD__ = "20261009153659";
+      window.__BUILD__ = "20261012132826";
       (function () {
         var KEY = "facility-layout.reload";
         var stored = null;
